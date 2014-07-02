@@ -246,11 +246,11 @@ __END__
 
 =head1 NAME
 
-mg-rast_md5_chimerism.pl -- checking for metagenome chimerism based on mg-rast annotations
+MGRAST_md5_chimerism.pl -- checking for metagenome chimerism based on mg-rast annotations
 
 =head1 SYNOPSIS
 
-mg-rast_md5_chimerism.pl -scaf -map -lca > output.txt
+MGRAST_md5_chimerism.pl -scaf -map -lca > output.txt
 
 =head2 options
 
@@ -278,7 +278,7 @@ Taxonomic level cutoff for comparing annotations. 0-indexed. (Genus is default).
 
 =head2 For more information:
 
-perldoc mg-rast_md5_chimerism.pl
+perldoc MGRAST_md5_chimerism.pl
 
 =head1 DESCRIPTION
 
@@ -322,7 +322,7 @@ The order of files must match for '-scaf', '-map', & '-lca'
 
 =head2 General Usage
 
-mg-rast_md5_chimerism.pl -l 4514931.3.650.superblat.expand.lca -map 4514931.3.550.cluster.aa90.mapping -scaf 4514931.3.100.preprocess.passed.fna > md5_chimera.txt
+MGRAST_md5_chimerism.pl -l 4514931.3.650.superblat.expand.lca -map 4514931.3.550.cluster.aa90.mapping -scaf 4514931.3.100.preprocess.passed.fna > md5_chimera.txt
 
 =head1 AUTHOR
 
