@@ -137,7 +137,7 @@ foreach my $id (@{$ARGV{-id}}){
   my $file_entries;
   foreach my $stage (@{$ARGV{-stage}}){
     $file_entries = get_files_in_stage($id, $stage);
-    if( @$file_entries ){
+    if( defined $file_entries ){
       last;  # keeping these file entries
     }
     else{
@@ -186,7 +186,7 @@ sub get_fastx_files{
 	print STDERR "Successful download to: '$filename'\n";
       }
       else{
-	die "ERROR: unsuccessful url: '$url'\n";
+	warn "WARNING: unsuccessful url: '$url'\n";
       }
     }
   }
@@ -208,7 +208,7 @@ sub get_files_in_stage{
   ## unless success
   my $file_entries;
   if( ! $response->is_success ){
-    die "ERROR: unsuccessful url: '$url'\n";
+    warn "WARNING: unsuccessful url: '$url'\n";    
   }
   else{
     my $jsonO = new JSON;
