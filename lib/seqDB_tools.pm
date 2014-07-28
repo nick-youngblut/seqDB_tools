@@ -33,6 +33,9 @@ use Data::Dumper;
 use LWP::UserAgent;
 use URI::Escape;
 use IPC::Cmd qw/run can_run/;
+use File::Fetch;
+use File::Temp;
+use IO::Uncompress::Gunzip qw(gunzip $GunzipError) ;
 
 use seqDB_tools::download qw/MGRAST_api_download/;
 
@@ -73,6 +76,145 @@ sub MGRAST_mapper_main{
 
 }
 
+
+=head2 SRA_mapper_main
+
+main subroutine for downloading and processing reads from SRA
+
+=head3 IN
+
+$argv_r -- Getopt::Euclid %ARGV
+
+=cut
+
+push @EXPORT_OK, 'SRA_mapper_main';
+
+sub SRA_mapper_main{
+  my $argv_r = shift or confess "Provide getopt::euclid argv\n";
+
+  # external script check 
+  ## bowtie2 
+  map{ can_run($_) or confess "ERROR: '$_' is not in your \$PATH\n" }
+    qw/bowtie2 mgrast_preprocess.pl mgrast_dereplication.pl/;
+
+  # getting urls
+  exists $argv_r->{-urls} or confess "ERROR: provide -urls flag\n";
+  my $urls_r = parse_urls($argv_r->{-urls}, $argv_r);
+
+  # each metagenome read file url
+  my %report;
+  while( my ($mg_id, $url) = each %$urls_r){ 
+    # making a temporary directory
+    my $tmpdiro = File::Temp->newdir();
+    my $tmpdir = $tmpdiro->dirname;
+
+    ## debug
+    $tmpdir = File::Spec->rel2abs(File::Spec->curdir())
+      if $argv_r->{'--debug'};
+
+    # downloading file
+    print STDERR "Getting url: $url\n" unless $argv_r->{'--quiet'};
+    my $ff = File::Fetch->new(uri => $url);
+    my $dl_filename = $ff->fetch( to => $tmpdir );
+    unless($dl_filename){
+      warn "WARNING: error for url: $url\n";
+      next;
+    }
+
+    # 'gunzip' file
+    print STDERR "gunzip $dl_filename\n" unless $argv_r->{'--quiet'};
+    (my $fastqFile = $dl_filename) =~ s/.gz$//;
+    my $status = gunzip $dl_filename => $fastqFile
+      or confess "gunzip failed for file: $dl_filename\n";
+
+    # mg-rast preprocess script call
+    print STDERR "Calling mgrast_preprocess.pl\n" unless $argv_r->{'--quiet'};
+    my $fastaFile = call_mgrast_preprocess($fastqFile, $tmpdir);
+    
+    # mg-rast dereplication script call
+    print STDERR "Calling mgrast_dereplicate.pl\n" unless $argv_r->{'--quiet'};
+    my $derepFile = call_mgrast_derep($fastaFile, $tmpdir);
+
+    # mapping
+    ## making hashref to input to bowtie
+    print STDERR "Mapping reads with bowtie2\n" unless $argv_r->{'--quiet'};  
+    my $hashref = { 
+		   $derepFile => { 'file_name' => 'bt2',
+				   'id' => $mg_id,
+				   'file_id' => 'derep',
+				   'file_type' => 'fna'
+				 }
+				 
+		  };
+
+    call_bowtie2( $hashref, \%report, $argv_r);
+    
+    # debug
+    #last; #if $argv_r->{'--debug'}
+  }
+
+  # writing out report
+  write_report( \%report, $argv_r );
+
+}
+
+
+#--- sub-main ---#
+
+=head2 call_mgrast_derep
+
+calling dereplication.pl script of mgrast pipeline
+
+=cut
+
+sub call_mgrast_derep{
+  my $fastaFile = shift or confess "Provide fasta file name\n";
+  my $outdir = shift or confess "Provide output directory name\n";
+
+  my $cmd = join(" ", 
+		 'mgrast_dereplication.pl', 
+		 '-file', $fastaFile,
+		 '-destination',  $outdir,
+		 '-prefix_length',  '50');
+
+  my( $success, $error_message, $full_buf, 
+      $stdout_buf, $stderr_buf ) =
+	run( command => $cmd, verbose => 0 );
+  confess "ERROR for command:\n\t$cmd\n"
+    unless $success;
+
+  # returning file w/ '.derep.fasta' extension
+  return $fastaFile . '.derep.fasta'
+}
+
+
+=head2 call_mgrast_preprocess
+
+calling preprocess script of mgrast pipeline
+
+=cut
+
+sub call_mgrast_preprocess{
+  my $fastqFile = shift or confess "Provide fastq file name\n";
+  my $outdir = shift or confess "Provide output directory name\n";
+
+  my $cmd = join(" ", 'mgrast_preprocess.pl', 
+		 '-base_dir', $outdir,
+		 '-user_dir', '.',
+		 '-upload_filename', $fastqFile);
+
+  my( $success, $error_message, $full_buf, 
+      $stdout_buf, $stderr_buf ) =
+	run( command => $cmd, verbose => 0 );
+  confess "ERROR for command:\n\t$cmd\n"
+    unless $success;
+
+
+  # returning file w/ 'fasta' extension
+  return $fastqFile . '.fasta';
+}
+
+
 =head2 parse_ids
 
 Parsing file containing ids. 1 id per line
@@ -101,6 +243,41 @@ sub parse_ids{
 
   return \@ids;
 }
+
+
+=head2 parse_urls
+
+Parsing list of file urls.
+2nd optional column: metagenome_ids
+
+=cut
+
+sub parse_urls{
+  my $url_opt = shift or confess "Provide -url arg\n";
+  my $argv_r = shift;
+
+  my $infh;
+  $url_opt eq '-' ? $infh = \*STDIN : 
+    open $infh, $url_opt or confess $!;
+
+  my %urls;
+  while(<$infh>){
+    chomp;
+    next if /^\s*$/;
+    
+    my @l = split /\t/;
+    if( scalar @l > 1 ){
+      $urls{$l[1]} = $l[0];
+    }
+    else{
+      $urls{$.} = $l[0];
+    }
+  }
+  close $infh or die $!;
+
+  return \%urls;
+}
+
 
 =head2 write_report
 
@@ -170,16 +347,14 @@ sub call_bowtie2{
   my $report_r = shift or confess "Provide report hashref\n";
   my $argv_r = shift;
 
+
   # input check
   my $bt2_params = exists $argv_r->{-bt2_params} ? 
     $argv_r->{-bt2_params} : '';
   my $idx = exists $argv_r->{-x} ? $argv_r->{-x} : '';
 
 
-  #print Dumper $files_r; exit;  
-
-  foreach my $filename (keys %$files_r){
-    my $entry = $files_r->{$filename};
+  while(my ($filename, $entry) = each %$files_r){
 
     # output file
     (my $basename = $entry->{file_name}) =~ s/\.[^.]+$//;

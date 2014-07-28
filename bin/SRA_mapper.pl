@@ -6,7 +6,7 @@ use warnings;
 
 =head1 NAME
 
-MGRAST_mapper.pl -- Download MG-RAST metagenomes and map reads to query
+SRA_mapper.pl -- Download SRA metagenomes and map reads to query
 
 =head1 VERSION
 
@@ -14,19 +14,19 @@ This is version 0.0.1
 
 =head1 USAGE
 
-    MGRAST_mapper.pl [options]
+    SRA_mapper.pl [flags]
 
 =head1 REQUIRED ARGUMENTS
 
 =over
 
-=item -id <ids>
+=item -urls <urls>
 
-File containing a list of MG-RAST metagenome ids (1 ID per line).
-Use '-' if from STDIN.
+File containing a list of urls to metagenome read
+files (gzipped fastq files). Use '-' if from STDIN.
 
 =for Euclid:
-ids.type: input
+urls.type: input
 
 =item -x <bt2_idx>
 
@@ -40,19 +40,6 @@ bt2_idx.type: string
 =head1 OPTIONS
 
 =over
-
-=item -stage <stage>...
-
-Processing stage for downloading files.
-If multiple stages provided, will try each
-in succession until entries are returned.
-
-Default: stage.default
-
-=for Euclid:
-stage.type: num
-stage.default: [150,100]
-
 
 =item -b <bt2_params> | -bt2_params <bt2_params>
 
@@ -116,32 +103,24 @@ Print the usual program information
 
 =head2 General workflow of the pipeline:
 
-For each metagenome ID:
+For each file url:
 
 =over
 
-=item * download metagenome as temporary file using MG-RAST API
+=item * Download metagenome read file (*fasta.gz format) as temporary file (using url).
 
-=item * collect general stats on metagenome
+=item * Process reads with MG-RAST preprocess and dereplication scripts.
 
-=item * map metagenome genome to query (index) with bowtie2
+=item * Collect general stats on metagenome.
 
-=item * created filtered bam file of hits (just reads that hit)
+=item * Map metagenome genome to query (index) with bowtie2.
+
+=item * Created filtered bam file of hits (just reads that hit subject).
 
 =back
 
 Finally: write report on mappings
 
-
-=head2 -stage flag
-
-Multiple stages can be provided as
-a backup in case the first stage doesn't
-return any entries (some stages are optional).
-
-Stages can be found in Appendix A of the
-MG-RAST manual
-(ftp://ftp.metagenomics.anl.gov/data/manual/mg-rast-tech-report-v3_r1.pdf).
 
 =head1 AUTHOR
 
@@ -169,8 +148,8 @@ use Data::Dumper;
 
 use FindBin;
 use lib "$FindBin::RealBin/../lib/";
-use seqDB_tools qw/MGRAST_mapper_main/;
+use seqDB_tools qw/SRA_mapper_main/;
   
 
 #--- main ---#
-MGRAST_mapper_main(\%ARGV);
+SRA_mapper_main(\%ARGV);
