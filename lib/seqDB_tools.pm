@@ -113,13 +113,14 @@ sub SRA_mapper_main{
       if $argv_r->{'--debug'};
 
     # downloading file
-    print STDERR "Getting url: $url\n" unless $argv_r->{'--quiet'};
-    my $ff = File::Fetch->new(uri => $url);
-    my $dl_filename = $ff->fetch( to => $tmpdir );
-    unless($dl_filename){
-      warn "WARNING: error for url: $url\n";
-      next;
+    print STDERR "Getting url: '$url'\n" unless $argv_r->{'--quiet'};
+    if( $url !~ /^ftp:\//){ 
+      warn "WARNING: url not formatted correctly: '$url'\n\tSkipping\n";
+      next;      
     }
+    my $ff = File::Fetch->new(uri => $url);
+    my $dl_filename = $ff->fetch( to => $tmpdir ) or
+      warn "WARNING: error for url: '$url'\n\tSkpping\n" and next;
 
     # 'gunzip' file
     print STDERR "gunzip $dl_filename\n" unless $argv_r->{'--quiet'};
@@ -155,7 +156,6 @@ sub SRA_mapper_main{
 
   # writing out report
   write_report( \%report, $argv_r );
-
 }
 
 
@@ -431,6 +431,7 @@ sub parse_bowtie2_stderr{
 
   return \%res;
 }
+
 
 
 

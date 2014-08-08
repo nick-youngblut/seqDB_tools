@@ -1,0 +1,183 @@
+GASiC Overview
+--------------
+
+GASiC (Genome Abundance Similarity Correction) analyzes results
+obtained from aligning sequence reads against a set of reference
+sequences and estimates the abundance of each reference in the
+dataset.
+
+
+1. Input / Format Prerequisites
+-------------------------------
+
+In addition to the raw sequence read dataset and the reference 
+genomes, GASiC requires a read alignment/mapping tool and a read
+simulator installed. 
+
+The reference genomes must be stored in separate files with a 
+unique, brief filename entitling the content of the file, e.g.
+'e.coli.fasta'. The format is not fixed, but must be compatible
+to the read mapper and read simulator.
+
+If the read mapper requires a reference index (e.g. bowtie), the
+index must have the same base name as the reference genome file,
+e.g. 'e.coli.index'.
+
+The raw data requires no special format; everything is possible,
+if the read mapper is able to read the file.
+
+The read alignment/mapping tool should be appropriate for the 
+raw data, i.e. do not use a short read mapper to align Sanger
+reads! The output of the read mapper must be in the SAM format.
+Most tools natively support SAM output or provide scripts to
+convert their output to SAM format (e.g. SAMSE for BWA).
+
+The read simulator should be able to simulate reads with the 
+same characteristics as in the raw data. The output format must
+be readable by the alignment/mapping tool.
+
+
+2. Command Line Interface
+-------------------------
+
+One way to use GASiC is the command line interface. This 
+requires the least knowledge about programming and Linux.
+
+2.1 Names File
+--------------
+
+One central element for practically using GASiC via the command
+line interface is the so called Names File. The Names File 
+contains the brief uniqe names identifying the reference 
+genomes involved in the analysis. The names are listed as plain
+text, using one name per line. An example Names File could look
+like (without the dashed lines):
+
+--- Names File ---
+e.coli
+EHEC
+shigella
+--- End of file ---
+
+This has the advantage, that you only need to pass the Names
+File and a general path pattern to the scripts. Let us make an
+example. Say, you stored your reference sequences in the 
+directory 'references/' as 'e.coli.fasta', 'EHEC.fasta', and
+'shigella.fasta'. The mapper index files are stored accordingly
+in 'references/map_index/'. Instead of passing the full
+paths of all files to the GASiC scripts, you only need to pass
+the names file and the pattern string 'references/%s.fasta' 
+for the references and 'references/map_index/%s.index' for the
+index files. '%s' is the placeholder for the name listed in
+the index file.
+
+
+2.2 Read Alignment/Mapping
+--------------------------
+
+The first stage of GASiC is to map/align the reads to the
+reference genomes. Although this can also be done by hand, we 
+recommend to use our script 'run_mappers.py'.
+
+'run_mappers.py' can be called from the command line via:
+  python run_mappers.py
+Since no parameters were passed, this will simply show the
+help text and exit. The behaviour is controlled by the 
+parameters described in the help text.
+
+The general call looks like this:
+  python run_mappers.py -m [mapper] -i [index] -o [output] [names]
+
+[mapper] is a string identifying which mapping tool is used.
+The identifier must be associated to a call function in the
+GASiC file 'core/gasic.py'. More information can be found
+there. If you specify 'bowtie', the bowtie mapper must be
+installed on your system.
+
+[index] is the string pattern pointing to the reference 
+genome index files. For example: 'references/index/%s.idx'.
+
+[output] is the string pattern pointing to the output files
+created by the mapping tool. For example: 'SAM/%s.sam'.
+
+[names] is the path to the Names File, e.g. 'names.txt'.
+
+
+2.3 Similarity Estimation
+-------------------------
+
+The genome similarity is estimated with the GASiC script
+'create_matrix.py'. It is called via
+  python create_matrix.py -s [simulator] -r [reference] -m [mapper] -i [index] -t [temp] -o [output] [names]
+
+[simulator] is the identifier string for the read simulator,
+see the [mapper] description above.
+
+[reference] is the string pattern pointing to the reference
+sequences serving as input for the read simulator, e.g.
+'references/%s.fasta'
+
+[mapper] see above.
+
+[index] see above.
+
+[temp] is the path of a temporary directory, where the
+simulated reads and intermediate SAM files can be stored.
+For example: '/tmp'.
+
+[output] is the filename of the output similarity matrix
+file. The file is in the NumPy format. Example:
+'similarity_matrix.npy'
+
+[names] Names File, see above.
+
+
+2.4 Similarity Correction
+-------------------------
+
+The GASiC script 'correct_abundances.py' estimates the 
+true abundances for each reference genome and calculates
+p-values. The script is called via
+  python correct_abundances.py -m [matrix] -s [samfiles] -b [bootstrap] -o [output] [names]
+
+[matrix] is the filename of the similarity matrix file
+obtained in the previous step. For example
+'similarity_matrix.npy'.
+
+[samfiles] is a string pointing to the SAM files created
+in the mapping step. For example: 'SAM/%s.sam'.
+
+[bootstrap] is the number of bootstrap repetitions of
+the experiment. This highly influences the runtime.
+For example: '100'
+
+[output] is the filename where the results will be saved.
+For example: 'results.txt'.
+
+
+3. Scripting Interface
+----------------------
+
+The command line scripts described in the previous 
+section can also be imported in python, such that they
+can easily be used to create more sophisticated analysis
+scripts. One example script is provided in the file
+'doc/example_script.py'. The script is documented, 
+please find information there.
+
+
+4. Developer Information
+------------------------
+
+Since the GASiC source code is freely available and well
+documented, users can easily extend GASiC or tune it to 
+their needs. This may become necessary when very large
+datasets need to be analyzed and for example parallel
+computation needs to be involved, or the calculation of
+the similarity matrix needs to be accelerated and some
+prior knowledge about the genome similarities needs to
+be included.
+
+GASiC is published under a BSD-like license and can thus
+be used, modified, and distributed easily. See the 
+LICENSE file for more information.

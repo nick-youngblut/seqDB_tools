@@ -107,13 +107,13 @@ For each file url:
 
 =over
 
-=item * Download metagenome read file (*fasta.gz format) as temporary file (using url).
+=item * Download metagenome read file (*fasta.gz format; using provided url) into temporary directory.
 
 =item * Process reads with MG-RAST preprocess and dereplication scripts.
 
 =item * Collect general stats on metagenome.
 
-=item * Map metagenome genome to query (index) with bowtie2.
+=item * Map metagenome genome to query (provided index file) with bowtie2.
 
 =item * Created filtered bam file of hits (just reads that hit subject).
 
@@ -121,6 +121,8 @@ For each file url:
 
 Finally: write report on mappings
 
+By default, bam files for each mapping will be saved to the current working
+directory (use -prefix to save to another directory).
 
 =head1 AUTHOR
 

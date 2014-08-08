@@ -1,0 +1,126 @@
+GASiC - Genome Abundance Similarity Correction
+
+
+Downloading
+-----------
+
+GASiC is hosted on sourceforge.net
+
+  http://sourceforge.net/projects/gasic/
+
+Further information can be found on the group homepage:
+
+  http://www.rki-ng4.de/
+
+
+System Requirements
+-------------------
+
+GASiC was built and tested on Linux operating systems.
+
+For Windows or Mac OS users, we provide a virtual machine (VM) with a 
+pre-installed and tested version of GASiC. Download links and further
+information can be found at:
+
+  http://sourceforge.net/projects/gasic/
+
+and
+
+  http://www.rki-ng4.de/
+
+The VirtualBox software is reqired to run the virtual machine. It can
+can be obtained at:
+
+  https://www.virtualbox.org/
+
+
+Documentation
+-------------
+
+Documentation can be found in the folder 'doc/'. The sourceforge wiki
+pages also contain useful information.
+
+GASiC is self-documenting. Calling a script with the '--help' option
+displays help on the script functionality. 
+
+The GASiC source code is thoroughly commented. Developers might find
+answers there.
+
+
+Installation
+------------
+
+GASiC is a Python script library and does not need installation. If all 
+dependencies are installed correctly, GASiC scripts can be run directly
+from the main folder.
+
+We recommend to add the GASiC main directory to your PYTHONPATH environment
+variable. On the console type:
+  export PYTHONPATH=$PYTHONPATH:/path/to/GASiC
+
+To use GASiC from any directory, you may also adjust your PATH environment
+variable:
+  export PATH=$PATH:/path/to/GASiC
+
+
+Dependencies
+------------
+
+GASiC was tested with the software listed below. Older versions might still
+work, but are not tested.
+
+  * Python 2.7, http://www.python.org/
+
+  * NumPy 1.6.1, http://numpy.scipy.org/
+  * SciPy 0.10.0, http://www.scipy.org/
+  * BioPython 1.58, http://biopython.org/wiki/Biopython
+  * pysam 0.6, http://code.google.com/p/pysam/
+
+GASiC calls alignment tools and read simulators from the command line. These
+tools must be installed and added to the PATH before GASiC can be used.
+We tested GASiC with the following tools:
+
+  * bowtie, http://bowtie-bio.sourceforge.net/index.shtml
+  * bowtie2, http://bowtie-bio.sourceforge.net/bowtie2/index.shtml
+  * bwa, http://bio-bwa.sourceforge.net/bwa.shtml
+
+  * Mason, http://www.seqan.de/projects/mason/
+  * dwgsim, http://dnaa.sourceforge.net/
+
+
+Bug Reporting
+-------------
+
+You can send GASiC bug reports to <LindnerM@rki.de>.
+
+Please provide a minimal example of the code producing the error and the
+error message(s). Also check which libraries (see Dependencies) you use.
+
+
+
+
+-------------------------------------------------------------------------------
+Copyright (c) 2012, Martin S. Lindner, LindnerM@rki.de, 
+Robert Koch-Institut, Germany,
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    * The name of the author may not be used to endorse or promote products
+      derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL MARTIN S. LINDNER BE LIABLE FOR ANY
+DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
