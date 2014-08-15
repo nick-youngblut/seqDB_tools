@@ -54,24 +54,41 @@ class MetaFile(object):
             outFile, ext = os.path.splitext(inFile)
         print outFile
 
-    def getReadStats(self, fileName, fileFormat='fasta'):
+    def getReadStats(self, fileName=None, fileFormat='fasta'):
         """Loading read file and getting stats:
         Length distribution: min, max, mean, median, stdev
         
+        Args:
+        fileName -- if None using self.fileName
+
         Output:
-        readStats attribute -- dict of stats (eg., 'mean' : mean_value)
+        readStats attribute -- dict of stats (eg., 'mean' : mean_value); returns None if no fileName provided
         """
 
+        # args
+        if fileName is None:
+            fileName = self.get_readFile()
+                
+        # get seq lengths & stats
         seqLens = []
         for seq_record in SeqIO.parse(fileName, fileFormat):
             seqLens.append( len(seq_record) )
+        
+        #print seqLens; sys.exit()
         self.readStats = { 
-            'min' : scipy.min(seqLens),
+            'min' : min(seqLens),
             'mean' : scipy.mean(seqLens),
             'median' : scipy.median(seqLens),
-            'max' : scipy.max(seqLens),
+            'max' : max(seqLens),
             'stdev' : scipy.std(seqLens)
             }
+        return 1
+
+
+    #--- setters/getters ---#
+    # readFile attr = downloaded read file
+    def set_readFile(self, fileName): self.readFile = fileName        
+    def get_readFile(self): return self.readFile
             
 
 class MetaFile_MGRAST(MetaFile):
@@ -188,8 +205,10 @@ class MetaFile_MGRAST(MetaFile):
             # checking that content was written
             ## else: try next stage
             if os.stat(outFile)[6] != 0:
-                self.outFile = outFile
+                self.set_readFile(outFile)
+                return 1
             else:
                 sys.stderr.write(' Requested content was empty! Skipping!\n')
                 continue                      
         
+
