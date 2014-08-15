@@ -3,6 +3,8 @@
 import sys
 import os
 
+from distutils.spawn import find_executable
+
 
 class ReadSimulator(object):
     """Factory class for read simulator"""
@@ -71,4 +73,5 @@ class mason(ReadSimulator):
         cmd = cmd.format(params=params, refFile=refFile, outFile=outFile, logFile=logFile)
         sys.stderr.write("Executing: {0}\n".format(cmd))
         os.system(cmd)
-        return outFile
+        return outFile, 'fastq'
+

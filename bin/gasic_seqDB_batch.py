@@ -4,12 +4,13 @@
 """
 gasic_seqDB_batch.py: run GASiC with multiple query metagenomes
 
-refFile -- fasta of reference sequence (used to create bowtie2 index file). Use '%s' to match multiple files.
-indexFile -- bowtie2 index file. Use '%s' to match multiple files.
+nameFile -- tab-delim table (refFile<tab>indexFile).
+            refFile = fasta of reference sequences used to make bowtie2 index
+            indexFile = read mapper index file
 metaFile -- metadata file with mg-rast or sra metagenome sequence links
 
 Usage:
-  gasic_seqDB_batch.py [options] <nameFile> <refFile> <indexFile> <metaFile>
+  gasic_seqDB_batch.py [options] <nameFile> <metaFile>
   gasic_seqDB_batch.py -h | --help
   gasic_seqDB_batch.py --version
 
@@ -36,6 +37,10 @@ import sys
 import tempfile
 import shutil
 
+from Bio import SeqIO
+import pysam
+import numpy as np
+
 scriptDir = os.path.dirname(__file__)
 libDir = os.path.join(scriptDir, '../lib/')
 sys.path.append(libDir)
@@ -43,8 +48,10 @@ libDir = os.path.join(scriptDir, '../lib/gasic-r16/')
 sys.path.append(libDir)
 
 import gasicBatch.MetaFile as MetaFile
+import gasicBatch.NameFile as NameFile
 from gasicBatch.ReadMapper import ReadMapper
 from gasicBatch.ReadSimulator import ReadSimulator
+
 
 #--- Option error testing ---#
 
@@ -54,9 +61,14 @@ def fileExists(fileName):
         raise IOError('"{0}" does not exist'.format( fileName ) )
 
 fileExists(args['<metaFile>'])
+fileExists(args['<nameFile>'])
+
 
 
 #--- Main ---#
+# nameFile loading
+nameF = NameFile.NameFile(args['<nameFile>'])
+
 # metaFile loading
 if args['--seqDB'] == 'MGRAST':
     metaF = MetaFile.MetaFile_MGRAST(fileName=args['<metaFile>'], 
@@ -67,16 +79,20 @@ elif args['--seqDB'] == 'SRA':
                                   sep='\t')
 
 
-# each metagenome
+# each metagenome (getting from certain seqDB)
 for row in metaF.iterByRow():
 
     # making temp directory and chdir
     #tmpdir = tempfile.mkdtemp()
+
+    # unpack
+    metagenomeID = row['ID']
+
     
     # downloading     
-    ret = metaF.download( ID=row['ID'] )
+    ret = metaF.download( ID=metagenomeID )
     if ret is None: 
-        sys.stderr.write('No read file downloaded for Metagenome {ID}. Moving to next metagenome'.format(**row))
+        sys.stderr.write('No read file downloaded for Metagenome {0}. Moving to next metagenome'.format(metagenomeID))
         continue
             
     # determine read stats
@@ -86,34 +102,66 @@ for row in metaF.iterByRow():
     # read mapping
     ## creating object for specific mapper
     mapper = ReadMapper.getMapper('bowtie2')    # factory class
-    ## calling mapper
-    indexFile = args['<indexFile>']
-    readFile = metaF.get_readFile()    
-    samFile = mapper.run_mapper(indexFile, readFile, fileType='fasta')   # f = bowtie2 flag for file type
 
+    ## calling mapper for each index file
+    for name in nameF.iter_names():
+        # unpack
+        rowIndex = name['rowIndex']
+        indexFile = name['indexFile']
+        readFile = metaF.get_readFile()    
+        # mapping
+        samFile = mapper.run_mapper(indexFile, readFile, fileType='fasta')   # f = bowtie2 flag for file type
+        nameF.set_names_keypair(rowIndex, 'samFile', samFile)
+      
+    # similarity estimation
+    ## select simulator
+    simulator = ReadSimulator.getSimulator('mason')
 
-    # similarity existimation
-    ## generate reads for every reference genome
+    ## each refFile
+    for name in nameF.iter_names():
+        # unpack
+        refFile = name['refFile']
+        indexFile = name['indexFile']
+        samFile = name['samFile']
 
-    ## find out how many reads were generated
-    ### Attention: Here we assume that all files contain the same number of read and are stored in fastq format
-    #num_reads = len( [ True for i in SeqIO.parse(sim_files[0],'fastq') ] )
+        # read simulation 
+        outDir = os.path.abspath(os.path.curdir)
+        (simReadsFile,fileType) = simulator.run_simulator(refFile, outDir=outDir)
 
-    ## map the reads of every reference to all references
+        # find out how many reads were generated
+        ### Attention: Here we assume that all files contain the same number of read and are stored in fastq format
+        num_reads = len( [ True for i in SeqIO.parse(simReadsFile, fileType) ] )
 
+        ## convert readFile to fasta if needed
+        if fileType.lower() == 'fastq':
+            fastaFile = os.path.splitext(simReadsFile)[0] + '.fna'
+            SeqIO.convert(simReadsFile, 'fastq', fastaFile, 'fasta')
+            simReadsFile = fastaFile
+                
+        ## map the reads to all references 
+        samSimFile = mapper.run_mapper(indexFile, simReadsFile, fileType='fasta')   # f = bowtie2 flag for file type
+        nameF.set_names_keypair(rowIndex, 'samSimFile', samSimFile)
+        
     ## parse SAM files to create numpy array
-    
-    # read simulation 
-    #simulator = ReadSimulator.getSimulator('mason')
-    #outDir = os.path.abspath(os.path.curdir)
-    #simulator.run_simulator(args['<refFile>'], outDir=outDir)
+    n_refs = nameF.len()
+    mapped_reads = np.zeros((n_refs, n_refs, num_reads))
+    for i in range(n_refs):
+        for j in range(n_refs):
+            # count the reads in i mapping to refernce j
+            # samfile = temp_dir+'/'+names[i]+'-'+names[j]+'.sam'
+            samFile = nameF.get_names_row(i)['samSimFile']
+            samfh = pysam.Samfile(samFile, "r")
+            mapped_reads[i,j,:] = np.array( [int(not read.is_unmapped) for read in samfh] )
 
-    sys.exit()
-
-
-    # creating similarity matrix
+    # save the similarity matrix
+    matrixOutFile = metagenomeID + '_simMtx'
+    np.save(matrixOutFile, mapped_reads)
+    sys.stderr.write('Wrote similarity matrix: {0}.npy'.format(matrixOutFile))
+            
 
     # similarity correction
+    ## input: matrix & original reads -> ref sam file
+    
 
     # clean up tempdir
     #shutil.rmtree(tmpdir)

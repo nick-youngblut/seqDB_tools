@@ -36,7 +36,6 @@ class ReadMapper(object):
 class MapperBowtie2(ReadMapper):
 
     def __init__(self, executable=['bowtie2-build', 'bowtie2']):
-        print executable
         # checking for bowtie2 in path
         [self.exeExists(x) for x in executable]
         # attr
