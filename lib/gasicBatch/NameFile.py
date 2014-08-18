@@ -89,10 +89,14 @@ class Name(object):
 
     def get_simReadsFile(self):
         return self.simReadsFile
+        
+    def get_refSamFile(self):
+        return self.refSamFile
+
 
     # setters
     def set_refSamFile(self, refSamFile):
-        self.refSameFile = refSamFile
+        self.refSamFile = refSamFile
 
     def set_simReadsFile(self, simReadsFile):
         self.simReadsFile = simReadsFile
@@ -109,7 +113,3 @@ class Name(object):
             self.samSimFiles = defaultdict(dict)
 
         self.samSimFiles[i][j] = samSimFile
-
-        print '{i} - {j} : {samSimFile}'.format(i=i, j=j, samSimFile=samSimFile)
-        print len(self.samSimFiles.keys())
-        print '#' * 20

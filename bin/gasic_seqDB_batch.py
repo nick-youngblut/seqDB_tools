@@ -179,16 +179,22 @@ for row in metaF.iterByRow():
 
     # save the similarity matrix
     matrixOutFile = metagenomeID + '_simMtx'
-    np.save(matrixOutFile, mapped_reads)
-    sys.stderr.write('Wrote similarity matrix: {0}.npy'.format(matrixOutFile))
+    np.save(matrixOutFile, mappedReads)
+    matrixOutFile += '.npy'
+    sys.stderr.write('Wrote similarity matrix: {}'.format(matrixOutFile))
             
 
     # similarity correction 
     ## input: matrix & original reads -> ref sam file
-    #ca = CorrectAbundances()
+    refSamFiles = [name.get_refSamFile() for name in nameF.iter_names()]
+    CorAbund = CorrectAbundances()
     
+    result = CorAbund.similarityCorrection(refSamFiles, matrixOutFile, 3)
     
 
+    print result; sys.exit()
+    
+    
     # clean up tempdir
     #shutil.rmtree(tmpdir)
 

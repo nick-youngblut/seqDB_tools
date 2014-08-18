@@ -10,17 +10,17 @@ from core import tools
 
 class CorrectAbundances(object):
 
-    @classmethod
-    def similarity_correction(cls, names, smat_raw, sam_pattern, bootstrap_samples):
+
+    @staticmethod
+    def similarityCorrection(samFiles, smatFile, nBootstrap):
         """
         Perform similarity correction step. The similarity matrix and mapping
         results must be available.
         
-        INPUT:
-        names:             array of genome names
-	smat_raw:          mapping information for similarity matrix with same ordering of genomes as in 'names'
-	sam_pattern:       pattern pointing to the filenames of the SAM-files to analyze
-	bootstrap_samples: number of bootstrap samples, use 1 to disable bootstrapping
+        Args:
+        samFiles -- list of SAM files (query reads mapped to each reference)
+	smatFile -- mapping information for similarity matrix with same ordering as simSamFile list
+	nBootstrap -- number of bootstrap samples, use 1 to disable bootstrapping
 
 	OUTPUT:
 	total:             total number of reads in the dataset
@@ -30,35 +30,37 @@ class CorrectAbundances(object):
 	p:                 p-value for the confidence, that the true abundance is above some threshold
 	"""
 
-	# find out the number of reads
-	total = len( [1 for read in pysam.Samfile(sam_pattern%(names[0]), "r")] )
-	print ". found %i reads"%total
+	# find out the total number of reads for first sam file
+        total = len( [1 for read in pysam.Samfile(samFiles[0], "r")] )
+	print "...found {} reads".format(total)
 
 	# initialize some arrays
 	#   mapping information; mapped[i,j]=1 if read j was successfully mapped to i.
-	mapped = np.zeros( (len(names), total) )
+	mapped = np.zeros( (len(samFiles), total) )
 
 	# total number of successfully mapped reads per reference
-	num_reads = np.zeros( (len(names),) )
+	num_reads = np.zeros( (len(samFiles),) )
 
 	# analyze the SAM files
-	for n_ind,nm in enumerate(names):
-            print ".. analyzing SAM-File %i of %i"%(n_ind+1,len(names))
+	for n_ind,samFile in enumerate(samFiles):
+            print "...analyzing SAM-File %i of %i"%(n_ind+1, len(samFiles))
             # samfile filename
-            sf = pysam.Samfile(sam_pattern%nm, "r")
+            sf = pysam.Samfile(samFile, "r")
 
-        # go through reads in samfile and check if it was successfully mapped
-        mapped[n_ind,:] = np.array([int(not rd.is_unmapped) for rd in sf])
-        num_reads[n_ind] = sum(mapped[n_ind,:])
+            # go through reads in samfile and check if it was successfully mapped
+            mapped[n_ind,:] = np.array([int(not rd.is_unmapped) for rd in sf])
+            num_reads[n_ind] = sum(mapped[n_ind,:])
 
 	# run similarity correction step
-	p,corr,var = gasic.bootstrap(mapped, smat_raw, bootstrap_samples)
+        smat = np.load(smatFile)
+	p,corr,var = gasic.bootstrap(mapped, smat, nBootstrap)
 	err = np.sqrt(var)
-	return total,num_reads,corr,err,p
+	return dict(total=total,num_reads=num_reads,corr=corr,err=err,p=p)
 
 
-    @classmethod
-    def unique(cls, names, sam_pattern):
+
+    @staticmethod
+    def unique(names, sam_pattern):
 	""" Determine the number of unique reads for every species based on the read names.
 	INPUT:
 	names:             array of genome names
@@ -81,13 +83,35 @@ class CorrectAbundances(object):
 	unique_read_names = [set() for nm in names]
 	for n in range(len(names)):
             others = set()
-        for m in range(len(names)):
-            if n!=m:
-                others |= mapped_read_names[m]
-                unique_read_names[n] = mapped_read_names[n] - others
+            for m in range(len(names)):
+                if n!=m:
+                    others |= mapped_read_names[m]
+            unique_read_names[n] = mapped_read_names[n] - others
 
 	return np.array([len(unq) for unq in unique_read_names])
 
+
+class CorrAbundRes(object):
+    """Class for results of correctAbundances() function"""
+
+    def __init__(self, total, num_reads, corr, err, p):    
+        self.total=total
+        self.num_reads=num_reads
+        self.corr=corr
+        self.err=err
+        self.p=p
+
+    def write(self, samFiles, outFileName):
+        """results into tab separated file."""
+        outfh = open(outFileName,'w')
+        outfh.write('\t'.join(['genome name', 'mapped reads', 'estimated reads', 'estimated error', 'p-value']))
+        for n_ind,samFile in enumerate(samFiles):
+            # Name, mapped reads, corrected reads, estimated error, p-value
+            out = "{name}\t{mapped}\t{corr}\t{error}\t{pval}\n"
+            outfh.write(out.format(name=nm,mapped=num_reads[n_ind],corr=corr[n_ind]*total,error=err[n_ind]*total,pval=p[n_ind]))
+            outfh.close()
+            print "...wrote results to {}".format(outFileName)
+    
         
 
 #--- main ---#    
