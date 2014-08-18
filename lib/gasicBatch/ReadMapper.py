@@ -91,3 +91,6 @@ class MapperBowtie2(ReadMapper):
         sys.stderr.write( 'Executing: "{0}"\n'.format(cmd) )
         os.system(cmd)
         return outFile
+
+
+        

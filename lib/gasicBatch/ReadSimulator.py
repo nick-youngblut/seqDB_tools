@@ -75,3 +75,4 @@ class mason(ReadSimulator):
         os.system(cmd)
         return outFile, 'fastq'
 
+

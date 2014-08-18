@@ -36,6 +36,7 @@ import os
 import sys
 import tempfile
 import shutil
+from collections import defaultdict
 
 from Bio import SeqIO
 import pysam
@@ -51,11 +52,12 @@ import gasicBatch.MetaFile as MetaFile
 import gasicBatch.NameFile as NameFile
 from gasicBatch.ReadMapper import ReadMapper
 from gasicBatch.ReadSimulator import ReadSimulator
+from gasicBatch.CorrectAbundances import CorrectAbundances
 
 
 #--- Option error testing ---#
 
-# readable files
+# readable files?
 def fileExists(fileName):
     if not os.path.isfile(fileName):
         raise IOError('"{0}" does not exist'.format( fileName ) )
@@ -69,6 +71,7 @@ fileExists(args['<nameFile>'])
 # nameFile loading
 nameF = NameFile.NameFile(args['<nameFile>'])
 
+
 # metaFile loading
 if args['--seqDB'] == 'MGRAST':
     metaF = MetaFile.MetaFile_MGRAST(fileName=args['<metaFile>'], 
@@ -79,6 +82,7 @@ elif args['--seqDB'] == 'SRA':
                                   sep='\t')
 
 
+
 # each metagenome (getting from certain seqDB)
 for row in metaF.iterByRow():
 
@@ -87,7 +91,6 @@ for row in metaF.iterByRow():
 
     # unpack
     metagenomeID = row['ID']
-
     
     # downloading     
     ret = metaF.download( ID=metagenomeID )
@@ -99,6 +102,7 @@ for row in metaF.iterByRow():
     ## skipping if no downloaded file found
     metaF.getReadStats(fileFormat='fasta')
 
+
     # read mapping
     ## creating object for specific mapper
     mapper = ReadMapper.getMapper('bowtie2')    # factory class
@@ -106,28 +110,29 @@ for row in metaF.iterByRow():
     ## calling mapper for each index file
     for name in nameF.iter_names():
         # unpack
-        rowIndex = name['rowIndex']
-        indexFile = name['indexFile']
+        indexFile = name.get_indexFile()
         readFile = metaF.get_readFile()    
         # mapping
         samFile = mapper.run_mapper(indexFile, readFile, fileType='fasta')   # f = bowtie2 flag for file type
-        nameF.set_names_keypair(rowIndex, 'samFile', samFile)
-      
+        name.set_refSamFile(samFile)
+    
+
     # similarity estimation
     ## select simulator
     simulator = ReadSimulator.getSimulator('mason')
 
-    ## each refFile
+    ## foreach refFile: simulate reads 
+    simReadsFiles = dict()
     for name in nameF.iter_names():
         # unpack
-        refFile = name['refFile']
-        indexFile = name['indexFile']
-        samFile = name['samFile']
+        fastaFile = name.get_fastaFile()
+        indexFile = name.get_indexFile()
+        readFile = metaF.get_readFile()    
 
         # read simulation 
         outDir = os.path.abspath(os.path.curdir)
-        (simReadsFile,fileType) = simulator.run_simulator(refFile, outDir=outDir)
-
+        (simReadsFile,fileType) = simulator.run_simulator(fastaFile, outDir=outDir)
+        
         # find out how many reads were generated
         ### Attention: Here we assume that all files contain the same number of read and are stored in fastq format
         num_reads = len( [ True for i in SeqIO.parse(simReadsFile, fileType) ] )
@@ -137,21 +142,40 @@ for row in metaF.iterByRow():
             fastaFile = os.path.splitext(simReadsFile)[0] + '.fna'
             SeqIO.convert(simReadsFile, 'fastq', fastaFile, 'fasta')
             simReadsFile = fastaFile
-                
-        ## map the reads to all references 
-        samSimFile = mapper.run_mapper(indexFile, simReadsFile, fileType='fasta')   # f = bowtie2 flag for file type
-        nameF.set_names_keypair(rowIndex, 'samSimFile', samSimFile)
         
-    ## parse SAM files to create numpy array
-    n_refs = nameF.len()
-    mapped_reads = np.zeros((n_refs, n_refs, num_reads))
+        # saving reads file names in names class
+        name.set_simReadsFile(simReadsFile)
+
+
+    # pairwise mapping of the simulated reads from each ref to all references 
+    ## resulting SAM file names saves as numpy array
+    n_refs = nameF.len()    
+    simSamFiles = np.array([['' for i in range(n_refs)] for j in range(n_refs)], dtype=object)
     for i in range(n_refs):
+        # getting simulated reads from first query reference taxon 
+        nameQuery = nameF.get_name(i)        
+        simReadsFile = nameQuery.get_simReadsFile()
+
         for j in range(n_refs):
-            # count the reads in i mapping to refernce j
-            # samfile = temp_dir+'/'+names[i]+'-'+names[j]+'.sam'
-            samFile = nameF.get_names_row(i)['samSimFile']
-            samfh = pysam.Samfile(samFile, "r")
-            mapped_reads[i,j,:] = np.array( [int(not read.is_unmapped) for read in samfh] )
+            # getting index file of subject for mapping to subject
+            nameSubject = nameF.get_name(j)
+            indexFile = nameSubject.get_indexFile()
+
+            # mapping
+            simSamFile = mapper.run_mapper(indexFile, simReadsFile, fileType='fasta')   # f = bowtie2 flag for file type
+
+            # adding samSimFile to names file
+            #nameQuery.add_simSamFile(i, j, simSamFile)            
+            simSamFiles[i,j] = simSamFile
+    
+    # parse SAM files to create numpy array
+    mappedReads = np.zeros((n_refs, n_refs, num_reads))
+    for i in range(n_refs):
+        for j in range(n_refs):            
+            # count the reads in i mapping to subject j
+            samfh = pysam.Samfile(simSamFiles[i,j], "r")
+            mappedReads[i,j,:] = np.array( [int(not read.is_unmapped) for read in samfh] )
+
 
     # save the similarity matrix
     matrixOutFile = metagenomeID + '_simMtx'
@@ -159,8 +183,10 @@ for row in metaF.iterByRow():
     sys.stderr.write('Wrote similarity matrix: {0}.npy'.format(matrixOutFile))
             
 
-    # similarity correction
+    # similarity correction 
     ## input: matrix & original reads -> ref sam file
+    #ca = CorrectAbundances()
+    
     
 
     # clean up tempdir
