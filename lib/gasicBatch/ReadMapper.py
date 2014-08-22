@@ -3,6 +3,19 @@
 import sys
 import os
 from distutils.spawn import find_executable
+import multiprocessing as mp
+import numpy as np
+import uuid
+
+
+
+def randomString(string_length=10):
+    """Returns a random string"""
+    rs = str(uuid.uuid4())
+    rs = rs.replace('-','')
+    return rs[0:string_length]
+
+    
 
 class ReadMapper(object):
 
@@ -42,7 +55,7 @@ class MapperBowtie2(ReadMapper):
         self.exe = executable
                 
 
-    def run_mapper(self, indexFile, readFile, outFile=None, fileType='fastq', **kwargs):
+    def run_mapper(self, indexFile, readFile, outFile=None, fileType='fastq', subproc=None, samFile=None, **kwargs):
         """Calling bowtie2 for mapping
 
         Args:
@@ -50,10 +63,12 @@ class MapperBowtie2(ReadMapper):
         readFile -- read file provided to bowtie2
         outFile -- sam output file. If None: using indexFile basename.
         """
-        # outFile
+        # outFile name
         if outFile is None:
             (basename, ext) = os.path.splitext(indexFile)
-            outFile = basename + '.sam'            
+            outFile = basename + '.sam'
+        if samFile is not None:
+            outFile = samFile
 
         # setting params if any exist
         params = ' '.join( ['-{0} {1}'.format(k,v) for k,v in kwargs.items()] )
@@ -66,7 +81,13 @@ class MapperBowtie2(ReadMapper):
         cmd = cmd.format(reads=readFile, index=indexFile, samfile=outFile, params=params)
         sys.stderr.write( 'Executing: "{0}"\n'.format(cmd) )
         os.system(cmd)
-        return outFile
+
+        # return
+        if subproc is not None:
+            subproc.send(outFile)
+            subproc.close()
+        else:
+            return outFile
 
 
     def make_index(self,subjectFile, outFile=None, **kwargs):
@@ -94,3 +115,70 @@ class MapperBowtie2(ReadMapper):
 
 
         
+class PairwiseMapper(object):
+    """Class for pairwise read mapping"""
+
+    def __init__(self, name, mapper):
+        """Providing nameFile object and mapper to determine
+        what to map and how to do it.
+        
+        Args:
+        name -- nameFile object
+        mapper -- ReadMapper object
+
+        Return:
+        2d numpy array of SAM files produced by mapping
+        """
+        self.name = name
+        self.n_refs = name.len()
+        self.mapper = mapper    # readmapper class
+            
+            
+    def pairwiseMap(self):
+        """ resulting SAM file names saves as numpy array"""
+
+        # setting up multiprocessing
+        parentConns = []
+        procs = []
+        
+        for i in range(self.n_refs):
+            # getting simulated reads from first query reference taxon
+            nameQuery = self.name.get_name(i)
+            simReadsFile = nameQuery.get_simReadsFile()
+        
+            for j in range(self.n_refs):
+                # getting index file of subject for mapping to subject
+                nameSubject = self.name.get_name(j)
+                indexFile = nameSubject.get_indexFile()
+
+                # unique names for sam file
+                samFile = randomString() + '.sam'
+                
+                # setting proc (pipe)
+                parentConn, childConn = mp.Pipe()
+                parentConns.append([i,j,parentConn])
+                p = mp.Process(target=self.mapper.run_mapper,
+                               args=[indexFile, simReadsFile],
+                               kwargs=dict(fileType='fasta',subproc=childConn,
+                                       samFile = samFile))
+                procs.append(p)
+                p.start()
+                
+        # getting data from children and adding to numpy array
+        simSamFiles = np.array([['' for i in range(self.n_refs)] for j in range(self.n_refs)], dtype=object)
+        for row in parentConns:
+            i = row[0]
+            j = row[1]
+            parentConn = row[2]
+            simSamFiles[i,j] = parentConn.recv()
+
+        # waiting for all processes to finish
+        for p in procs:
+            p.join()
+
+        # return array
+        return simSamFiles
+                
+        
+        
+            

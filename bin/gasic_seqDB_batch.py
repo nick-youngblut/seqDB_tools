@@ -10,26 +10,39 @@ nameFile -- tab-delim table (refFile<tab>indexFile).
 metaFile -- metadata file with mg-rast or sra metagenome sequence links
 
 Usage:
-  gasic_seqDB_batch.py [options] <nameFile> <metaFile>
+  gasic_seqDB_batch.py [options] <nameFile> <metaFile> [<stages>...]
   gasic_seqDB_batch.py -h | --help
   gasic_seqDB_batch.py --version
 
 Options:
-  --seqDB=<seqDB>       Sequence database name ('MGRAST' or 'SRA'). [default: MGRAST]
-  --stages=<stages>...  MG-RAST processing stages to attempt download of. 
-  Each in list will be tried until successful download. [default: 200,150]
+  <nameFile>          Name file (See Description).
+  <metaFile>          Tab-delim table of metadata for the sequence database of interest.
+  <stages>...         MG-RAST processing stages to attempt download of. 
+                      Each in list will be tried until successful download. [default: 200,150]
+  --seqDB=<seqDB>     Sequence database name ('MGRAST' or 'SRA'). [default: MGRAST]
   --version     Show version.
   -h --help     Show this screen.
+
+Description:
+  Run the GASiC pipeline on >= reference sequences (>=1 nucleotid fasta files),
+  with the query reads being those selected from a sequence database (eg., MGRAST).
+  Selecting which (meta)genome reads are used for the GASiC pipeline is determined
+  from the user-provide metaFile.
+  
+  <nameFile> -- Format: 1 or 2 columns; 1st column: 'reference_fasta';
+                optional 2nd column: 'reference_index'
+                The index is the mapper index file (eg., bowtie2 index),
+                which is only needed if the mappers requires an index file.
 """
 
 from docopt import docopt
-import re
+import os, sys
 
 if __name__ == '__main__':
     args = docopt(__doc__, version='0.1')
     args['--seqDB'] = args['--seqDB'].upper()
-    args['--stages'] = re.split(r'\s*,\s*', args['--stages'])
-    
+    if len(args['<stages>']) == 0:
+        args['<stages>'] = [200, 150]
 
 #--- Package import ---#
 import os
@@ -37,6 +50,7 @@ import sys
 import tempfile
 import shutil
 from collections import defaultdict
+import multiprocessing as mp
 
 from Bio import SeqIO
 import pysam
@@ -50,7 +64,7 @@ sys.path.append(libDir)
 
 import gasicBatch.MetaFile as MetaFile
 import gasicBatch.NameFile as NameFile
-from gasicBatch.ReadMapper import ReadMapper
+from gasicBatch.ReadMapper import ReadMapper, PairwiseMapper
 from gasicBatch.ReadSimulator import ReadSimulator
 from gasicBatch.CorrectAbundances import CorrectAbundances
 
@@ -75,7 +89,7 @@ nameF = NameFile.NameFile(args['<nameFile>'])
 # metaFile loading
 if args['--seqDB'] == 'MGRAST':
     metaF = MetaFile.MetaFile_MGRAST(fileName=args['<metaFile>'], 
-                                     stages=args['--stages'], 
+                                     stages=args['<stages>'], 
                                      sep='\t')
 elif args['--seqDB'] == 'SRA':
     metaF = MetaFile.MetaFile_SRA(fileName=args['<metaFile>'],
@@ -123,6 +137,7 @@ for row in metaF.iterByRow():
 
     ## foreach refFile: simulate reads 
     simReadsFiles = dict()
+    num_reads = None
     for name in nameF.iter_names():
         # unpack
         fastaFile = name.get_fastaFile()
@@ -146,55 +161,55 @@ for row in metaF.iterByRow():
         # saving reads file names in names class
         name.set_simReadsFile(simReadsFile)
 
-
+        
     # pairwise mapping of the simulated reads from each ref to all references 
-    ## resulting SAM file names saves as numpy array
-    n_refs = nameF.len()    
-    simSamFiles = np.array([['' for i in range(n_refs)] for j in range(n_refs)], dtype=object)
-    for i in range(n_refs):
-        # getting simulated reads from first query reference taxon 
-        nameQuery = nameF.get_name(i)        
-        simReadsFile = nameQuery.get_simReadsFile()
+    pwm = PairwiseMapper(nameF, mapper)
+    simSamFiles = pwm.pairwiseMap()
 
-        for j in range(n_refs):
-            # getting index file of subject for mapping to subject
-            nameSubject = nameF.get_name(j)
-            indexFile = nameSubject.get_indexFile()
-
-            # mapping
-            simSamFile = mapper.run_mapper(indexFile, simReadsFile, fileType='fasta')   # f = bowtie2 flag for file type
-
-            # adding samSimFile to names file
-            #nameQuery.add_simSamFile(i, j, simSamFile)            
-            simSamFiles[i,j] = simSamFile
     
-    # parse SAM files to create numpy array
-    mappedReads = np.zeros((n_refs, n_refs, num_reads))
-    for i in range(n_refs):
-        for j in range(n_refs):            
+    # parse sam files to create a numpy array of reads mapped
+    (I,J) = simSamFiles.shape
+    mappedReads = np.zeros((I, J, num_reads))    
+    for i in range(I):
+        for j in range(J):
+            #print simSamFiles[i,j]
+            
             # count the reads in i mapping to subject j
-            samfh = pysam.Samfile(simSamFiles[i,j], "r")
-            mappedReads[i,j,:] = np.array( [int(not read.is_unmapped) for read in samfh] )
-
-
+            samfile = pysam.Samfile(simSamFiles[i,j], "r")
+            mappedReads[i,j,:] = np.array( [int(not read.is_unmapped) for read in samfile] )
+            samfile.close()
+               
+            
     # save the similarity matrix
     matrixOutFile = metagenomeID + '_simMtx'
     np.save(matrixOutFile, mappedReads)
     matrixOutFile += '.npy'
-    sys.stderr.write('Wrote similarity matrix: {}'.format(matrixOutFile))
+    sys.stderr.write('Wrote similarity matrix: {}\n'.format(matrixOutFile))
             
 
     # similarity correction 
     ## input: matrix & original reads -> ref sam file
     refSamFiles = [name.get_refSamFile() for name in nameF.iter_names()]
     CorAbund = CorrectAbundances()
-    
-    result = CorAbund.similarityCorrection(refSamFiles, matrixOutFile, 3)
+
+    nBootstrap = 3
+    result = CorAbund.similarityCorrection(refSamFiles, matrixOutFile, nBootstrap)
     
 
-    print result; sys.exit()
-    
-    
+    # writing output
+    for i,name in enumerate(nameF.get_names()):
+        total = result['total']
+        outvals = dict(
+            ref = name.get_fastaFile(),
+            mapped = result['num_reads'][i],
+            corr = result['corr'][i] * total,
+            error = result['err'][i] * total,
+            pval = result['p'][i]
+            )
+
+        print '{ref}\t{mapped}\t{corr}\t{error}\t{pval}'.format(**outvals)
+
+        
     # clean up tempdir
     #shutil.rmtree(tmpdir)
 

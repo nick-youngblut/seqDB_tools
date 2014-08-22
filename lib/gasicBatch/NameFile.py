@@ -62,6 +62,9 @@ class NameFile(object):
     def get_name(self, i):
         return self.names[i]
 
+    def get_names(self):
+        return self.names
+        
     def len(self):
         return len(self.names)
 
