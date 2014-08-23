@@ -47,6 +47,7 @@ class MetaFile(object):
         else:
             raise IOError( 'Provide either fileName or fileObject' )
 
+            
     @classmethod
     def gunzip(cls, inFile, outFile=None):
         """gunzip of a provided file"""
@@ -54,43 +55,14 @@ class MetaFile(object):
             outFile, ext = os.path.splitext(inFile)
         print outFile
 
-    def getReadStats(self, fileName=None, fileFormat='fasta'):
-        """Loading read file and getting stats:
-        Length distribution: min, max, mean, median, stdev
         
-        Args:
-        fileName -- if None using self.fileName
-
-        Output:
-        readStats attribute -- dict of stats (eg., 'mean' : mean_value); returns None if no fileName provided
-        """
-
-        # args
-        if fileName is None:
-            fileName = self.get_readFile()
-                
-        # get seq lengths & stats
-        seqLens = []
-        for seq_record in SeqIO.parse(fileName, fileFormat):
-            seqLens.append( len(seq_record) )
-        
-        #print seqLens; sys.exit()
-        self.readStats = { 
-            'min' : min(seqLens),
-            'mean' : scipy.mean(seqLens),
-            'median' : scipy.median(seqLens),
-            'max' : max(seqLens),
-            'stdev' : scipy.std(seqLens)
-            }
-        return 1
-
-
     #--- setters/getters ---#
     # readFile attr = downloaded read file
     def set_readFile(self, fileName): self.readFile = fileName        
     def get_readFile(self): return self.readFile
             
 
+    
 class MetaFile_MGRAST(MetaFile):
     """Subclass of MetaFile class for importing mgrast metafile """
 
@@ -118,9 +90,9 @@ class MetaFile_MGRAST(MetaFile):
         """
         reC = re.compile(r'((mgm)*\d\d\d\d\d\d\d\.\d)')
         
-        for count, row in self._tbl.iterrows():
+        for rowIndex, row in self._tbl.iterrows():
             metagenome_id = row['id']
-
+            
             # check that metagenome ID is in correct format
             m = reC.match(metagenome_id)
             if not m:
@@ -128,63 +100,86 @@ class MetaFile_MGRAST(MetaFile):
             else:
                 metagenome_id = m.group(1)
 
-            # determining sequencing platform
-            platform = self.getPlatform(row)
-
+            # create metaFile row class
+            mfr = MetaFile_MGRAST_row(row, self.stages, rowIndex=rowIndex)
+            
             # yield
-            yield {'ID' : metagenome_id, 'platform' : platform}
-    
+            yield mfr
 
-    def getPlatform(self, row):
+
+            
+class MetaFile_MGRAST_row(object):
+    """Just single row of metafile table"""
+
+    def __init__(self, row, stages, rowIndex=None):
+        """
+        Attribs:
+        row -- pandas dataframe row
+        stages -- list of MGRAST processing stages
+        """
+        if type(row) is not pd.core.series.Series:
+            raise TypeError('row must be pd.core.series.Series\n')
+            
+        self.ID = row['id']
+        self.row = row
+        self.rowIndex = rowIndex
+        self.stages = stages
+        
+        # determining sequencing platform
+        self.platform = self.getPlatform()
+
+        
+    def getPlatform(self):
         """Determining sequencing platform from metadata file
 
         Column(s) to check:
         seq_method
         
         Args:
-        row -- row of pandas DataFrame
+
+        Return:
+        string identifying sequencing platform
         """
         
         # check for column
         try: 
-            row['seq_method']  = str(row['seq_method'])
+            self.row['seq_method']  = str(self.row['seq_method'])
         except KeyError as err:
             raise type(err)(err.message + '. "seq_meth" column not in metadata file!')
             
         # determine sequencing platform
         platform = None
-        if re.search(r'454|pyro', row['seq_method'], flags=re.I) is not None:
+        if re.search(r'454|pyro', self.row['seq_method'], flags=re.I) is not None:
             platform = '454'
-        elif re.search( r'illumina', row['seq_method'], flags=re.I) is not None:
+        elif re.search( r'illumina', self.row['seq_method'], flags=re.I) is not None:
             platform = 'illumina'
-        elif re.search( r'sanger', row['seq_method'], flags=re.I) is not None:
+        elif re.search( r'sanger', self.row['seq_method'], flags=re.I) is not None:
             platform = 'sanger'
         # return
         return platform
 
 
-    def download(self, ID):
+    def download(self):
         """MG-RAST API request for downloading metagenome reads.
         Reads are downloaded as gzipped files.
-
-        Kwargs:
-        ID -- mg-rast metagenome ID
 
         Attrib edit:
         outFile -- string with downloaded file name
         """        
 
         # input check
-        if ID is None:
+        if self.ID is None:
             raise TypeError('ID cannot be None type')
         
         # trying each stage
         for stage in self.stages:
-            outFile = self._dlStage(stage, ID)
+            outFile = self._dlStage(stage, self.ID)            
             if outFile:
-                return outFile
+                self.set_readFile(outFile)
+                return 1
             else:
                 sys.stderr.write(' Requested content was empty! Stage{} did not return anything\n'.format(stage))
+        return 0
             
 
     def _dlStage(self, stage, ID, iteration=1, lastIter=9):
@@ -230,8 +225,55 @@ class MetaFile_MGRAST(MetaFile):
         # checking that content was written
         ## else: try next stage
         if os.stat(outFile)[6] != 0:
-            self.set_readFile(outFile)
+            #self.set_readFile(outFile)
             return outFile
         else:
             return 0
 
+    def get_ReadStats(self, readFile=None, fileFormat='fasta'):
+        """Loading read file and getting stats:
+        Length distribution: min, max, mean, median, stdev
+        
+        Args:
+        readFile -- if None using self.readFile
+
+        Output:
+        readStats attribute -- dict of stats (eg., 'mean' : mean_value); returns None if no fileName provided
+        """
+
+        # args
+        if readFile is None:
+            readFile = self.get_readFile()
+                
+        # get seq lengths & stats
+        seqLens = []
+        for seq_record in SeqIO.parse(readFile, fileFormat):
+            seqLens.append( len(seq_record) )
+        
+        # stats on read lengths
+        self.readStats = { 
+            'min' : min(seqLens),
+            'mean' : scipy.mean(seqLens),
+            #'median' : scipy.median(seqLens),
+            'max' : max(seqLens),
+            'stdev' : scipy.std(seqLens)
+            }
+        return 1
+
+
+        
+
+    #-- getters/setters --#
+    def get_platform(self):
+        return self.platform
+
+    def get_ID(self):
+        return self.ID
+
+    # readFile attr = downloaded read file
+    def set_readFile(self, fileName):
+        self.readFile = fileName        
+    def get_readFile(self):
+        return self.readFile
+
+        

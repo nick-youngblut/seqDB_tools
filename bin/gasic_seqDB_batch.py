@@ -100,38 +100,37 @@ origWorkDir = os.path.abspath(os.curdir)
 
 
 # each metagenome (getting from certain seqDB)
-for row in metaF.iterByRow():
+for mg in metaF.iterByRow():
 
     # making temp directory and chdir
     if args['--debug'] == False:
         tmpdir = tempfile.mkdtemp()
         os.chdir(tmpdir)
 
-    # unpack
-    metagenomeID = row['ID']
-    
+
     # downloading metagenome reads
-    ret = metaF.download( ID=metagenomeID )
+    ret = mg.download( )
     if ret is None: 
-        sys.stderr.write('No read file downloaded for Metagenome {0}. Moving to next metagenome'.format(metagenomeID))
+        sys.stderr.write('No read file downloaded for Metagenome {0}. Moving to next metagenome'.format(mgID))
         continue
             
     # determine read stats
     ## skipping if no downloaded file found
-    metaF.getReadStats(fileFormat='fasta')
+    mg.get_ReadStats(fileFormat='fasta')
 
 
     # read mapping
     ## creating object for specific mapper
     mapper = ReadMapper.getMapper('bowtie2')    # factory class
-
+    mapperParams = mapper.get_paramsByReadStats(metaF)
+    
     ## calling mapper for each index file
     for name in nameF.iter_names():
         # unpack
         indexFile = name.get_indexFile()
         readFile = metaF.get_readFile()    
         # mapping
-        samFile = mapper.run_mapper(indexFile, readFile, fileType='fasta')   # f = bowtie2 flag for file type
+        samFile = mapper.run_mapper(indexFile, readFile, 'f')   # f = bowtie2 flag for file type (fasta)
         name.set_refSamFile(samFile)
     
 
@@ -185,7 +184,7 @@ for row in metaF.iterByRow():
                
             
     # save the similarity matrix
-    matrixOutFile = metagenomeID + '_simMtx'
+    matrixOutFile = mgID + '_simMtx'
     np.save(matrixOutFile, mappedReads)
     matrixOutFile += '.npy'
     sys.stderr.write('Wrote similarity matrix: {}\n'.format(matrixOutFile))
@@ -209,10 +208,10 @@ for row in metaF.iterByRow():
             corr = result['corr'][i] * total,
             error = result['err'][i] * total,
             pval = result['p'][i],
-            metagenomeID = metagenomeID  # metagenome containing the reads used
+            mgID = mgID  # metagenome containing the reads used
             )
 
-        print '{metagenomeID}\t{ref}\t{mapped}\t{corr}\t{error}\t{pval}'.format(**outvals)
+        print '{mgID}\t{ref}\t{mapped}\t{corr}\t{error}\t{pval}'.format(**outvals)
 
         
     # moving back to original working directory

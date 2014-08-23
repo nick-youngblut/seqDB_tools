@@ -45,6 +45,7 @@ class ReadMapper(object):
         else:
             raise IOError('"{0}" is not in your $PATH'.format(exe))
 
+            
 
 class MapperBowtie2(ReadMapper):
 
@@ -55,13 +56,18 @@ class MapperBowtie2(ReadMapper):
         self.exe = executable
                 
 
-    def run_mapper(self, indexFile, readFile, outFile=None, fileType='fastq', subproc=None, samFile=None, **kwargs):
+    def run_mapper(self, indexFile, readFile, outFile=None,
+                   subproc=None, samFile=None, *args, **kwargs):
         """Calling bowtie2 for mapping
 
         Args:
         indexFile -- bowtie2 index file
         readFile -- read file provided to bowtie2
         outFile -- sam output file. If None: using indexFile basename.
+        subproc -- subprocess?
+        samFile -- output SAM file name. Default to edited indexFile name.
+        args -- bowtie2 boolean flags
+        kwargs -- bowtie2 keyword flags
         """
         # outFile name
         if outFile is None:
@@ -71,10 +77,9 @@ class MapperBowtie2(ReadMapper):
             outFile = samFile
 
         # setting params if any exist
-        params = ' '.join( ['-{0} {1}'.format(k,v) for k,v in kwargs.items()] )
-        ## fileType
-        if fileType.lower() == 'fasta':
-            params += ' -f'
+        argParams = ' '.join( ['-{}'.format(x) for x in args] )
+        kwargParams = ' '.join( ['-{0} {1}'.format(k,v) for k,v in kwargs.items()] )
+        params = ' '.join([argParams, kwargParams])
         
         # calling bowtie2
         cmd = 'bowtie2 -U {reads} -x {index} -S {samfile} --local {params}'
@@ -90,6 +95,17 @@ class MapperBowtie2(ReadMapper):
             return outFile
 
 
+    def get_paramsByReadStats(self, metaFile):
+        """Setting parameters for the mapper based on stats for read used.
+
+        Args:
+        metaFile -- MetaFile class instance
+        """
+        print dir(metaFile); sys.exit()
+
+        
+
+            
     def make_index(self,subjectFile, outFile=None, **kwargs):
         """Making index file for subject fasta file
 
@@ -113,6 +129,7 @@ class MapperBowtie2(ReadMapper):
         os.system(cmd)
         return outFile
 
+    
 
         
 class PairwiseMapper(object):
