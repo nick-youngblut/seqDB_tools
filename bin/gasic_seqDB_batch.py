@@ -122,22 +122,24 @@ for mg in metaF.iterByRow():
     # read mapping
     ## creating object for specific mapper
     mapper = ReadMapper.getMapper('bowtie2')    # factory class
-    mapperParams = mapper.get_paramsByReadStats(metaF)
+   # mapper.set_paramsByReadStats(mg)
     
     ## calling mapper for each index file
     for name in nameF.iter_names():
         # unpack
         indexFile = name.get_indexFile()
-        readFile = metaF.get_readFile()    
+        readFile = mg.get_readFile()    
         # mapping
-        samFile = mapper.run_mapper(indexFile, readFile, 'f')   # f = bowtie2 flag for file type (fasta)
+        samFile = mapper.run_mapper(indexFile, readFile)   # f = bowtie2 flag for file type (fasta)
         name.set_refSamFile(samFile)
     
 
     # similarity estimation
     ## select simulator
     simulator = ReadSimulator.getSimulator('mason')
-
+    ## setting params based on metagenome read stats & platform
+    platform, simParams = simulator.get_paramsByReadStats(mg)
+    
     ## foreach refFile: simulate reads 
     simReadsFiles = dict()
     num_reads = None
@@ -145,11 +147,13 @@ for mg in metaF.iterByRow():
         # unpack
         fastaFile = name.get_fastaFile()
         indexFile = name.get_indexFile()
-        readFile = metaF.get_readFile()    
+        readFile = mg.get_readFile()    
 
         # read simulation 
         outDir = os.path.abspath(os.path.curdir)
-        (simReadsFile,fileType) = simulator.run_simulator(fastaFile, outDir=outDir)
+        (simReadsFile,fileType) = simulator.run_simulator(fastaFile, outDir=outDir,
+                                                          platform=platform,
+                                                          params={platform : simParams})
         
         # find out how many reads were generated
         ### Attention: Here we assume that all files contain the same number of read and are stored in fastq format

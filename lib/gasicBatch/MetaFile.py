@@ -254,7 +254,7 @@ class MetaFile_MGRAST_row(object):
         self.readStats = { 
             'min' : min(seqLens),
             'mean' : scipy.mean(seqLens),
-            #'median' : scipy.median(seqLens),
+            'median' : scipy.median(seqLens),
             'max' : max(seqLens),
             'stdev' : scipy.std(seqLens)
             }
