@@ -15,13 +15,14 @@ Usage:
   gasic_seqDB_batch.py --version
 
 Options:
-  <nameFile>          Name file (See Description).
-  <metaFile>          Tab-delim table of metadata for the sequence database of interest.
-  <stages>...         MG-RAST processing stages to attempt download of. 
-                      Each in list will be tried until successful download. [default: 200,150]
-  --seqDB=<seqDB>     Sequence database name ('MGRAST' or 'SRA'). [default: MGRAST]
-  --version     Show version.
-  -h --help     Show this screen.
+  <nameFile>         Name file (See Description).
+  <metaFile>         Tab-delim table of metadata for the sequence database of interest.
+  <stages>...        MG-RAST processing stages to attempt download of. 
+                     Each in list will be tried until successful download. [default: 200,150]
+  --seqDB=<seqDB>    Sequence database name ('MGRAST' or 'SRA'). [default: MGRAST]
+  --version          Show version.
+  -h --help          Show this screen.
+  --debug            Debug mode
 
 Description:
   Run the GASiC pipeline on >= reference sequences (>=1 nucleotid fasta files),
@@ -85,7 +86,6 @@ fileExists(args['<nameFile>'])
 # nameFile loading
 nameF = NameFile.NameFile(args['<nameFile>'])
 
-
 # metaFile loading
 if args['--seqDB'] == 'MGRAST':
     metaF = MetaFile.MetaFile_MGRAST(fileName=args['<metaFile>'], 
@@ -95,18 +95,22 @@ elif args['--seqDB'] == 'SRA':
     metaF = MetaFile.MetaFile_SRA(fileName=args['<metaFile>'],
                                   sep='\t')
 
+# current working directory
+origWorkDir = os.path.abspath(os.curdir)
 
 
 # each metagenome (getting from certain seqDB)
 for row in metaF.iterByRow():
 
     # making temp directory and chdir
-    #tmpdir = tempfile.mkdtemp()
+    if args['--debug'] == False:
+        tmpdir = tempfile.mkdtemp()
+        os.chdir(tmpdir)
 
     # unpack
     metagenomeID = row['ID']
     
-    # downloading     
+    # downloading metagenome reads
     ret = metaF.download( ID=metagenomeID )
     if ret is None: 
         sys.stderr.write('No read file downloaded for Metagenome {0}. Moving to next metagenome'.format(metagenomeID))
@@ -204,14 +208,16 @@ for row in metaF.iterByRow():
             mapped = result['num_reads'][i],
             corr = result['corr'][i] * total,
             error = result['err'][i] * total,
-            pval = result['p'][i]
+            pval = result['p'][i],
+            metagenomeID = metagenomeID  # metagenome containing the reads used
             )
 
-        print '{ref}\t{mapped}\t{corr}\t{error}\t{pval}'.format(**outvals)
+        print '{metagenomeID}\t{ref}\t{mapped}\t{corr}\t{error}\t{pval}'.format(**outvals)
 
         
-    # clean up tempdir
-    #shutil.rmtree(tmpdir)
-
+    # moving back to original working directory
+    if args['--debug'] == False:
+        os.chdir(origWorkDir)
+        
     # debug
-    sys.exit()
+    #sys.exit()

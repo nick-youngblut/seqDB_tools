@@ -1,7 +1,12 @@
-# seqDB_tools
-=============
+seqDB_tools: Tools for interaction with nucleotide sequence databases
+=====================================================================
 
-Tools for interaction with nucleotide sequence databases.
+
+# INSTALL
+
+Add the bin folder to your $PATH.
+All dependencies (both perl and python scripts)
+should be obtainable from CPAN and pip/anaconda.
 
 
 # SUPPORT AND DOCUMENTATION
