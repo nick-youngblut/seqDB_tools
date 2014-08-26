@@ -20,6 +20,7 @@ Options:
   <stages>...        MG-RAST processing stages to attempt download of. 
                      Each in list will be tried until successful download. [default: 200,150]
   --seqDB=<seqDB>    Sequence database name ('MGRAST' or 'SRA'). [default: MGRAST]
+  --nprocs=<n>       Number of parallel processes. [default: 1]
   --version          Show version.
   -h --help          Show this screen.
   --debug            Debug mode
@@ -72,6 +73,7 @@ from gasicBatch.CorrectAbundances import CorrectAbundances
 
 
 #--- Option error testing ---#
+N_procs = args['--nprocs']
 
 # readable files?
 def fileExists(fileName):
@@ -131,7 +133,7 @@ for mg in metaF.iterByRow():
     indexFiles = [name.get_indexFile() for name in nameF.iter_names()]
     ### calling mapper via parmap
     readFile = mg.get_readFile()
-    ret = parmap.map(mapper, indexFiles, readFile, tmpdir,  processes=4)
+    ret = parmap.map(mapper, indexFiles, readFile, tmpdir, processes=N_procs)
     ### assigning sam file names to name instances
     ret = dict(ret)
     for name in nameF.iter_names():
@@ -139,22 +141,16 @@ for mg in metaF.iterByRow():
         name.set_refSamFile(ret[indexFile])
     
     
-    #for name in nameF.iter_names():
-        # unpack
-#        indexFile = name.get_indexFile()
-#        readFile = mg.get_readFile()    
-#        # mapping
-#        samFile = mapper.run_mapper(indexFile, readFile)   # f = bowtie2 flag for file type (fasta)
-#        name.set_refSamFile(samFile)
-    
-
     #-- similarity estimation by pairwise mapping simulated reads --#
     ## select simulator
     simulator = ReadSimulator.getSimulator('mason')
     ## setting params based on metagenome read stats & platform
     platform, simParams = simulator.get_paramsByReadStats(mg)
     
-    ## foreach refFile: simulate reads 
+    ## foreach refFile: simulate reads
+    fasta_index = [name.get_fastaFile(),name.get_indexFile() for name in nameF.iter_names()]
+    ret = parmap.map(simulator, fasta_index, tmpdir, platform, simParams, processes=N_procs)
+
     #simReadsFiles = dict()
     #num_reads = None
     

@@ -78,8 +78,7 @@ class mason(ReadSimulator):
         return platform, params
             
 
-    def run_simulator(self, refFile, outFile=None, outDir=None,
-                      platform='illumina', params=None):
+    def run_simulator(self, refFile, outDir, platform, params=None):
         """Calling mason; default for creating illumina reads
 
         Default keyword params for mason (override any of them with params):
@@ -141,6 +140,9 @@ class mason(ReadSimulator):
         os.system(cmd)
         return outFile, 'fastq'
 
+
+    def __call__(self, 
+        
 
     def run_simulatorMP(self, nameFile, procs=1, *args, **kwargs):
         """Wrapper on run_simulator for running simulations in parallel
