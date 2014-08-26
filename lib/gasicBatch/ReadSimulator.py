@@ -4,6 +4,7 @@ import sys
 import os
 
 from distutils.spawn import find_executable
+import parmap
 
 
 class ReadSimulator(object):
@@ -141,3 +142,44 @@ class mason(ReadSimulator):
         return outFile, 'fastq'
 
 
+    def run_simulatorMP(self, nameFile, procs=1, *args, **kwargs):
+        """Wrapper on run_simulator for running simulations in parallel
+
+        Args:
+        nameIter -- name iterator for the NameFile class (lists references)
+        #readFile -- readFile name
+        procs -- number of parallel processes
+        """
+
+        def _sim(self, name, run_simulator, *args, **kwargs):        
+            # unpack
+            fastaFile = name.get_fastaFile()
+            indexFile = name.get_indexFile()
+
+            # read simulation
+            outDir = os.path.abspath(os.path.curdir)
+            (simReadsFile,fileType) = self.run_simulator(fastaFile,
+                                                         outDir=outDir,
+                                                         **kwargs)
+
+            # find out how many reads were generated
+            ### Attention: Here we assume that all files contain the same number of read and are stored in fastq format
+            num_reads = len( [ True for i in SeqIO.parse(simReadsFile, fileType) ] )
+
+            ## convert readFile to fasta if needed
+            if fileType.lower() == 'fastq':
+                fastaFile = os.path.splitext(simReadsFile)[0] + '.fna'
+                SeqIO.convert(simReadsFile, 'fastq', fastaFile, 'fasta')
+                simReadsFile = fastaFile
+
+            # saving reads file names in names class
+            return simReadsFile
+            #name.set_simReadsFile(simReadsFile)
+
+        def tester(name):
+            print name
+            
+        # multiprocess set up
+        names = [name for name in nameFile.iter_names()]
+        simReadsFiles = parmap.map(tester, names, processes=procs)
+        return dict(zip(names, simReadsFiles))

@@ -56,6 +56,7 @@ import multiprocessing as mp
 from Bio import SeqIO
 import pysam
 import numpy as np
+import parmap
 
 scriptDir = os.path.dirname(__file__)
 libDir = os.path.join(scriptDir, '../lib/')
@@ -102,71 +103,89 @@ origWorkDir = os.path.abspath(os.curdir)
 # each metagenome (getting from certain seqDB)
 for mg in metaF.iterByRow():
 
-    # making temp directory and chdir
+    ## unpack
+    mgID = mg.get_ID()
+    
+    # making temp directory and chdir; all processes for metagenome done in temp dir
     if args['--debug'] == False:
         tmpdir = tempfile.mkdtemp()
         os.chdir(tmpdir)
 
-
     # downloading metagenome reads
-    ret = mg.download( )
-    if ret is None: 
-        sys.stderr.write('No read file downloaded for Metagenome {0}. Moving to next metagenome'.format(mgID))
+    dw_success = mg.download( )
+    if not dw_success: 
+        sys.stderr.write('No read file downloaded for the metagenome "{0}".\n\tMoving to next metagenome\n'.format(mgID))
         continue
-            
+        
     # determine read stats
     ## skipping if no downloaded file found
-    mg.get_ReadStats(fileFormat='fasta')
+    mg.get_readStats(fileFormat='fasta')
 
-
-    # read mapping
+    
+    #-- mapping metagenome reads to reference fasta(s) --#
     ## creating object for specific mapper
     mapper = ReadMapper.getMapper('bowtie2')    # factory class
    # mapper.set_paramsByReadStats(mg)
-    
-    ## calling mapper for each index file
+            
+    ### getting iterable and args
+    indexFiles = [name.get_indexFile() for name in nameF.iter_names()]
+    ### calling mapper via parmap
+    readFile = mg.get_readFile()
+    ret = parmap.map(mapper, indexFiles, readFile, tmpdir,  processes=4)
+    ### assigning sam file names to name instances
+    ret = dict(ret)
     for name in nameF.iter_names():
-        # unpack
         indexFile = name.get_indexFile()
-        readFile = mg.get_readFile()    
-        # mapping
-        samFile = mapper.run_mapper(indexFile, readFile)   # f = bowtie2 flag for file type (fasta)
-        name.set_refSamFile(samFile)
+        name.set_refSamFile(ret[indexFile])
+    
+    
+    #for name in nameF.iter_names():
+        # unpack
+#        indexFile = name.get_indexFile()
+#        readFile = mg.get_readFile()    
+#        # mapping
+#        samFile = mapper.run_mapper(indexFile, readFile)   # f = bowtie2 flag for file type (fasta)
+#        name.set_refSamFile(samFile)
     
 
-    # similarity estimation
+    #-- similarity estimation by pairwise mapping simulated reads --#
     ## select simulator
     simulator = ReadSimulator.getSimulator('mason')
     ## setting params based on metagenome read stats & platform
     platform, simParams = simulator.get_paramsByReadStats(mg)
     
     ## foreach refFile: simulate reads 
-    simReadsFiles = dict()
-    num_reads = None
-    for name in nameF.iter_names():
-        # unpack
-        fastaFile = name.get_fastaFile()
-        indexFile = name.get_indexFile()
-        readFile = mg.get_readFile()    
+    #simReadsFiles = dict()
+    #num_reads = None
+    
+#    simulator.run_simulatorMP(nameF, platform=platform, params=simParams)
 
-        # read simulation 
-        outDir = os.path.abspath(os.path.curdir)
-        (simReadsFile,fileType) = simulator.run_simulator(fastaFile, outDir=outDir,
-                                                          platform=platform,
-                                                          params={platform : simParams})
-        
-        # find out how many reads were generated
-        ### Attention: Here we assume that all files contain the same number of read and are stored in fastq format
-        num_reads = len( [ True for i in SeqIO.parse(simReadsFile, fileType) ] )
+#    sys.exit()
+    
+    # for name in nameF.iter_names():
+    #     # unpack
+    #     fastaFile = name.get_fastaFile()
+    #     indexFile = name.get_indexFile()
+    #     #readFile = mg.get_readFile()    
 
-        ## convert readFile to fasta if needed
-        if fileType.lower() == 'fastq':
-            fastaFile = os.path.splitext(simReadsFile)[0] + '.fna'
-            SeqIO.convert(simReadsFile, 'fastq', fastaFile, 'fasta')
-            simReadsFile = fastaFile
+    #     # read simulation 
+    #     outDir = os.path.abspath(os.path.curdir)
+    #     (simReadsFile,fileType) = simulator.run_simulator(fastaFile, outDir=outDir,
+    #                                                       platform=platform,
+    #                                                       params={platform : simParams})
         
-        # saving reads file names in names class
-        name.set_simReadsFile(simReadsFile)
+    #     # find out how many reads were generated
+    #     ### Attention: Here we assume that all files contain the same number of read and are stored in fastq format
+    #     num_reads = len( [ True for i in SeqIO.parse(simReadsFile, fileType) ] )
+
+    #     ## convert readFile to fasta if needed
+    #     if fileType.lower() == 'fastq':
+    #         fastaFile = os.path.splitext(simReadsFile)[0] + '.fna'
+    #         SeqIO.convert(simReadsFile, 'fastq', fastaFile, 'fasta')
+    #         simReadsFile = fastaFile
+        
+    #     # saving reads file names in names class
+    #     name.set_simReadsFile(simReadsFile)
 
         
     # pairwise mapping of the simulated reads from each ref to all references 

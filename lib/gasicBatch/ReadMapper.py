@@ -3,14 +3,14 @@
 import sys
 import os
 from distutils.spawn import find_executable
-import multiprocessing as mp
 import numpy as np
 import uuid
-
+import multiprocessing as mp
+import parmap
 
 
 def randomString(string_length=10):
-    """Returns a random string"""
+    """Returns a random string. Useful for creating unique file names"""
     rs = str(uuid.uuid4())
     rs = rs.replace('-','')
     return rs[0:string_length]
@@ -18,7 +18,8 @@ def randomString(string_length=10):
     
 
 class ReadMapper(object):
-
+    """Factory class for read mapping with 3rd party mappers."""
+    
     @staticmethod
     def getMapper(mapper=None):
         """factory designating subclass to use for mapping
@@ -29,9 +30,10 @@ class ReadMapper(object):
         Mappers:
         bowtie2
         """
-        
-        mappers = dict(bowtie2=MapperBowtie2)
 
+        # available mapper subclasses
+        mappers = dict(bowtie2=MapperBowtie2)
+        # designate mapper class
         if mapper in mappers:
             return mappers[mapper]()
         else:
@@ -39,7 +41,11 @@ class ReadMapper(object):
 
 
     def exeExists(self, exe):
-        """checking to see if executable is in path"""
+        """Checking to see if executable is in path
+
+        Args:
+        exe -- executable
+        """
         if find_executable(exe):
             return 1
         else:
@@ -48,51 +54,57 @@ class ReadMapper(object):
             
 
 class MapperBowtie2(ReadMapper):
-
+    """Class for running bowtie2 mapping"""
+    
     def __init__(self, executable=['bowtie2-build', 'bowtie2']):
-        # checking for bowtie2 in path
+        """
+        Args:
+        executable -- list of executables to check that they exist
+        """
         [self.exeExists(x) for x in executable]
         # attr
         self.exe = executable
                 
 
-    def run_mapper(self, indexFile, readFile, outFile=None,
-                   subproc=None, samFile=None, params={'-f': ''}):
+    def run_mapper(self, indexFile, readFile, outDir, samFile=None, params={'-f': ''}):
         """Calling bowtie2 for mapping
 
         Args:
         indexFile -- bowtie2 index file
         readFile -- read file provided to bowtie2
-        outFile -- sam output file. If None: using indexFile basename.
-        subproc -- subprocess?
-        samFile -- output SAM file name. Default to edited indexFile name.
+        outDir -- output directory. 
+        samFile -- sam output file. If None: using indexFile basename.
         params -- bowtie2 parameters. Value = '' if boolean parameter
         """
-        # outFile name
-        if outFile is None:
-            (basename, ext) = os.path.splitext(indexFile)
-            outFile = basename + '.sam'
-        if samFile is not None:
-            outFile = samFile
-
+        # output
+        ## outDir
+        (basename, ext) = os.path.splitext(indexFile)
+        (basedir, filename) = os.path.split(basename)
+        ## samFile name
+        if samFile is None:
+            #(basename, ext) = os.path.splitext(indexFile)
+            basefile = os.path.join(outDir, filename)
+            samFile = basefile + '_' + randomString() + '.sam'
+        else:
+            samFile = os.path.join(outDir, basename) + ext
+        
         # setting params if any exist
         params = ' '.join( ['{0} {1}'.format(k,v) for k,v in params.items()] )
         
         # calling bowtie2
-        cmd = 'bowtie2 -U {reads} -x {index} -S {samfile} --local {params}'
-        cmd = cmd.format(reads=readFile, index=indexFile, samfile=outFile, params=params)
+        cmd = 'bowtie2 -U {reads} -x {index} -S {sam} --local {params}'
+        cmd = cmd.format(reads=readFile, index=indexFile, sam=samFile, params=params)
         sys.stderr.write( 'Executing: "{0}"\n'.format(cmd) )
         os.system(cmd)
 
-        # return
-        if subproc is not None:
-            subproc.send(outFile)
-            subproc.close()
-        else:
-            return outFile
-
-
+        return [indexFile, samFile]
+        
             
+    def __call__(self, indexFile, readFile, outDir, samFile=None, params={'-f': ''}):
+        """For calling method via multiprocessing"""
+        return self.run_mapper(indexFile, readFile, outDir, samFile=samFile, params=params)
+
+        
     def make_index(self,subjectFile, outFile=None, **kwargs):
         """Making index file for subject fasta file
 
@@ -104,7 +116,7 @@ class MapperBowtie2(ReadMapper):
         # outFile
         if outFile is None:
             (basename, ext) = os.path.splitext(indexFile)
-            outFile = basename + '.sam'            
+            outFile = basename + '_' + randomString() + '.sam'            
 
         # setting params if any exist
         params = ' '.join( ['-{0} {1}'.format(k,v) for k,v in kwargs.items()] )
@@ -115,7 +127,6 @@ class MapperBowtie2(ReadMapper):
         sys.stderr.write( 'Executing: "{0}"\n'.format(cmd) )
         os.system(cmd)
         return outFile
-
     
 
         
@@ -163,8 +174,8 @@ class PairwiseMapper(object):
                 parentConns.append([i,j,parentConn])
                 p = mp.Process(target=self.mapper.run_mapper,
                                args=[indexFile, simReadsFile],
-                               kwargs=dict(fileType='fasta',subproc=childConn,
-                                       samFile = samFile))
+                               kwargs=dict(subproc=childConn,
+                                           samFile=samFile))
                 procs.append(p)
                 p.start()
                 

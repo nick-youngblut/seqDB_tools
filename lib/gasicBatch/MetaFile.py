@@ -12,7 +12,7 @@ import pandas as pd
 
 
 class MetaFile(object):
-    """metadata table file object class
+    """Metadata table file general class
     """
     
     def __init__(self, fileName=None, fileObject=None, 
@@ -20,9 +20,11 @@ class MetaFile(object):
         """Loading file as pandas dataFrame. Checking for necessary columns
         
         Kwargs:
-        seqDB -- datafile type: 'MGRAST' or 'SRA'
+        fileName -- metadata file name
+        fileObject -- metadata file object (from open())      
         stages -- mg-rast processing stage for downloading files. If multiple stages provided,
-          will try each in succession until an entry is returned.
+                  will try each in succession until an entry is returned.
+        pandas_kwargs -- keyword args for pandas to manage data import of the metafile table        
         """
 
         # attributes
@@ -68,6 +70,7 @@ class MetaFile_MGRAST(MetaFile):
 
     def __init__(self, fileName=None, fileObject=None, 
                  stages=[150, 100], **pandas_kwargs):
+        """Using MetaFile init"""
         MetaFile.__init__(self, fileName=fileName, fileObject=fileObject, 
                           stages=stages, **pandas_kwargs)
         self.checkFile()
@@ -86,7 +89,7 @@ class MetaFile_MGRAST(MetaFile):
         requires metaFile in pandas dataframe class
         
         Return:
-        metagenome_id
+        MEtaFile_MGRAST_row class instance.
         """
         reC = re.compile(r'((mgm)*\d\d\d\d\d\d\d\.\d)')
         
@@ -116,6 +119,7 @@ class MetaFile_MGRAST_row(object):
         Attribs:
         row -- pandas dataframe row
         stages -- list of MGRAST processing stages
+        rowIndex -- row index in the pandas DataFrame from which the instance was derived
         """
         if type(row) is not pd.core.series.Series:
             raise TypeError('row must be pd.core.series.Series\n')
@@ -165,6 +169,9 @@ class MetaFile_MGRAST_row(object):
 
         Attrib edit:
         outFile -- string with downloaded file name
+
+        Returns:
+        boolean with success|fail
         """        
 
         # input check
@@ -176,19 +183,25 @@ class MetaFile_MGRAST_row(object):
             outFile = self._dlStage(stage, self.ID)            
             if outFile:
                 self.set_readFile(outFile)
-                return 1
+                return 1   # success
             else:
                 sys.stderr.write(' Requested content was empty! Stage{} did not return anything\n'.format(stage))
-        return 0
+        return 0   # fail 
             
 
     def _dlStage(self, stage, ID, iteration=1, lastIter=9):
         """Downloading the fasta file based on a particular stage and iteration.
+        This function will recursively call itself with increasing mgrast-pipeline
+        iteration values until the file is downloaded successfully or the lastIter
+        is reached.       
 
         Args:
         stage -- mgrast pipeline stage
         iteration -- iteration through the MGRAST pipeline
         lastIter -- the last iteration that will be tried
+
+        Returns:
+        boolean with success|fail
         """
         # lastIter
         if iteration > lastIter:
@@ -210,34 +223,33 @@ class MetaFile_MGRAST_row(object):
                 
         # writing content to file
         outFile = ID + '_stage' + stage + '.fasta'
-        d = zlib.decompressobj(16+zlib.MAX_WBITS)
-        
-        # trying to write
+        d = zlib.decompressobj(16+zlib.MAX_WBITS)        
+
+        ## trying to write file
         try:
             with open(outFile, 'wb') as fd:
                 for chunk in req.iter_content(1000):
                     fd.write( d.decompress( chunk) )
             sys.stderr.write(' File written: {0}\n'.format(outFile))
-        except:  # trying next iteration
+        except:  # trying next iteration (recursive call)
             sys.stderr.write(' File was not a compress sequence file! Trying next pipeline iteration!\n')
             self._dlStage(stage, ID, iteration=iteration + 1)
 
-        # checking that content was written
-        ## else: try next stage
-        if os.stat(outFile)[6] != 0:
-            #self.set_readFile(outFile)
+        ## checking that content was written
+        if os.stat(outFile)[6] != 0:   # file exists
             return outFile
         else:
-            return 0
+            return 0   # fail
 
-    def get_ReadStats(self, readFile=None, fileFormat='fasta'):
+            
+    def get_readStats(self, readFile=None, fileFormat='fasta'):
         """Loading read file and getting stats:
         Length distribution: min, max, mean, median, stdev
         
         Args:
         readFile -- if None using self.readFile
 
-        Output:
+        Attrib:
         readStats attribute -- dict of stats (eg., 'mean' : mean_value); returns None if no fileName provided
         """
 
@@ -263,7 +275,7 @@ class MetaFile_MGRAST_row(object):
 
         
 
-    #-- getters/setters --#
+    #-- getters/setters/hasers --#
     def get_platform(self):
         return self.platform
 
@@ -273,7 +285,12 @@ class MetaFile_MGRAST_row(object):
     # readFile attr = downloaded read file
     def set_readFile(self, fileName):
         self.readFile = fileName        
+
     def get_readFile(self):
         return self.readFile
 
+    def has_readFile(self):
+        if hashattr(self, 'readFile'): return 1
+        else: return 0
+    
         
