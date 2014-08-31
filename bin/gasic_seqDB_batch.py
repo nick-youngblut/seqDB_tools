@@ -10,23 +10,24 @@ nameFile -- tab-delim table (refFile<tab>indexFile).
 metaFile -- metadata file with mg-rast or sra metagenome sequence links
 
 Usage:
-  gasic_seqDB_batch.py [options] <nameFile> <metaFile> [<stages>...]
+  gasic_seqDB_batch.py [options] <nameFile> <metaFile> [<stages>...] 
   gasic_seqDB_batch.py -h | --help
   gasic_seqDB_batch.py --version
 
 Options:
-  <nameFile>         Name file (See Description).
-  <metaFile>         Tab-delim table of metadata for the sequence database of interest.
-  <stages>...        MG-RAST processing stages to attempt download of. 
-                     Each in list will be tried until successful download. [default: 200,150]
-  --seqDB=<seqDB>    Sequence database name ('MGRAST' or 'SRA'). [default: MGRAST]
-  --npar-map=<nm>    Number of parallel read mapping calls. [default: 1]  
-  --npar-sim=<ns>    Number of parallel read simulations. [default: 1]
-  --ncores-3rd=<nt>  Number of cores used by 3rd party software. [default: 1]
-  --nbootstrap=<nb>  Number of bootstrap iterations. [default: 100]
-  --version          Show version.
-  -h --help          Show this screen.
-  --debug            Debug mode
+  <nameFile>          Name file (See Description).
+  <metaFile>          Tab-delim table of metadata for the sequence database of interest.
+  <stages>...         MG-RAST processing stages to attempt download of. 
+                      Each in list will be tried until successful download. [default: 200 150]
+  --platform=<ps>     Metagenomes with reads from defined platform(s) will be skipped (comma-delim list). [default: ]
+  --seqDB=<seqDB>     Sequence database name ('MGRAST' or 'SRA'). [default: MGRAST]
+  --npar-map=<nm>     Number of parallel read mapping calls. [default: 1]  
+  --npar-sim=<ns>     Number of parallel read simulations. [default: 1]
+  --ncores-3rd=<nt>   Number of cores used by 3rd party software. [default: 1]
+  --nbootstrap=<nb>   Number of bootstrap iterations. [default: 100]
+  --version           Show version.
+  -h --help           Show this screen.
+  --debug             Debug mode
 
 Description:
   Run the GASiC pipeline on >= reference sequences (>=1 nucleotid fasta files),
@@ -41,6 +42,15 @@ Description:
 
   The script provides multiple levels of parallelization (parallel call of 3rd party
   software and setting number of cores used by the software during the call).
+
+Output:
+  * table with columns:
+    metagenome_id
+    ref_sequence_file
+    n_reads_mapped
+    corrected_abundacne
+    error
+    pval
 """
 
 from docopt import docopt
@@ -51,8 +61,9 @@ if __name__ == '__main__':
     args['--seqDB'] = args['--seqDB'].upper()
     if len(args['<stages>']) == 0:
         args['<stages>'] = [200, 150]
+    args['--platform'] = [x.lower() for x in args['--platform'].split(',')]
 
-        
+                                                           
 #--- Package import ---#
 import os
 import sys
@@ -131,10 +142,14 @@ for mg in metaF.iterByRow():
         continue
             
     #-- determine read stats --#
-    ## skipping if no downloaded file found
     mg.get_ReadStats(fileFormat='fasta')
+    ## skipping if platform in platform skip list
+    mg_platform = mg.get_platform()
+    if mg_platform in args['--platform']:
+        sys.stderr.write('NOTE: Metagenome "{}" is platform "{}". Skipping.\n'.format(mg.get_ID(), mg_platform))
+        continue
 
-
+        
     #-- read mapping --#
     ## creating object for specific mapper
     mapper = ReadMapper.getMapper('bowtie2')    # factory class
@@ -223,6 +238,7 @@ for mg in metaF.iterByRow():
             mgID = mgID  # metagenome containing the reads used
             )
 
+        # metagenome_id, refSequences, n-mapped, corrected-abundacne, error, pval
         print '{mgID}\t{ref}\t{mapped}\t{corr}\t{error}\t{pval}'.format(**outvals)
 
         
@@ -231,4 +247,4 @@ for mg in metaF.iterByRow():
         os.chdir(origWorkDir)
         
     # debug
-    #sys.exit()
+    sys.exit()
