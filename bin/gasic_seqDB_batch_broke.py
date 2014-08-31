@@ -20,8 +20,8 @@ Options:
   <stages>...        MG-RAST processing stages to attempt download of. 
                      Each in list will be tried until successful download. [default: 200,150]
   --seqDB=<seqDB>    Sequence database name ('MGRAST' or 'SRA'). [default: MGRAST]
-  --ncores-map=<nm>  Number of parallel read mapping calls. [default: 1]  
-  --ncores-sim=<ns>  Number of parallel read simulations. [default: 1]
+  --npar-map=<nm>    Number of parallel read mapping calls. [default: 1]  
+  --npar-sim=<ns>    Number of parallel read simulations. [default: 1]
   --ncores-3rd=<nt>  Number of cores used by 3rd party software. [default: 1]
   --nbootstrap=<nb>  Number of bootstrap iterations. [default: 100]
   --version          Show version.
@@ -63,6 +63,7 @@ import multiprocessing as mp
 
 import pysam
 import numpy as np
+import parmap
 
 scriptDir = os.path.dirname(__file__)
 libDir = os.path.join(scriptDir, '../lib/')
@@ -78,7 +79,6 @@ from gasicBatch.CorrectAbundances import CorrectAbundances
 
 
 #--- Option error testing ---#
-
 # readable files?
 def fileExists(fileName):
     if not os.path.isfile(fileName):
@@ -91,8 +91,8 @@ fileExists(args['<nameFile>'])
 
 #--- Main ---#
 # unpack args
-ncores_map = int(args['--ncores-map'])
-ncores_sim = int(args['--ncores-sim'])
+npar_map = int(args['--npar-map'])
+npar_sim = int(args['--npar-sim'])
 ncores_3rd = int(args['--ncores-3rd'])
 nBootstrap = int(args['--nbootstrap'])
 
@@ -125,23 +125,26 @@ for mg in metaF.iterByRow():
         tmpdir = os.curdir
 
     # downloading metagenome reads
-    ret = mg.download( )
-    if ret is None: 
-        sys.stderr.write('No read file downloaded for Metagenome {0}. Moving to next metagenome'.format(mgID))
+    dw_success = mg.download( )
+    if not dw_success: 
+        sys.stderr.write('No read file downloaded for the metagenome "{0}".\n\tMoving to next metagenome\n'.format(mgID))
         continue
             
     #-- determine read stats --#
     ## skipping if no downloaded file found
-    mg.get_ReadStats(fileFormat='fasta')
+    mg.get_readStats(fileFormat='fasta')
 
 
     #-- read mapping --#
     ## creating object for specific mapper
     mapper = ReadMapper.getMapper('bowtie2')    # factory class
    # mapper.set_paramsByReadStats(mg)
+
     
     ## calling mapper for each index file
-    mapper.parallel(nameF, mg, nprocs=ncores_map, params={'-f':'', '-p':ncores_3rd})
+#    mapper.parallel(nameF, mg)#, nprocs=npar_map, params={'-f':'', '-p':ncores_3rd})
+
+    mapper.parallel(nameF, mg, nprocs=npar_map, params={'-f':'', '-p':ncores_3rd})
 
 
     #-- similarity estimation by pairwise mapping simulated reads --#
@@ -150,7 +153,7 @@ for mg in metaF.iterByRow():
     ## setting params based on metagenome read stats & platform
     platform, simParams = simulator.get_paramsByReadStats(mg)
     ## calling simulator using process pool
-    simulator.parallel(nameF, nprocs=ncores_sim, outDir=tmpdir, platform=platform, params=simParams)
+    simulator.parallel(nameF, nprocs=npar_sim, outDir=tmpdir, platform=platform, params=simParams)
     # finding out how many reads were generated
     num_reads = [name.get_simReadsCount() for name in nameF.iter_names()]
     if len(set(num_reads)) > 1:
@@ -175,7 +178,7 @@ for mg in metaF.iterByRow():
             pairwiseComps.append((i,j,indexFile,simReadsFile,))
 
     # pairwise mapping
-    pairwiseComps = mapper.pairwise(pairwiseComps, nprocs=ncores_map,
+    pairwiseComps = mapper.pairwise(pairwiseComps, nprocs=npar_map,
                                     tmpFile=True, params={'-f':'', '-p':ncores_3rd})
 
     # convert to numpy array
@@ -231,4 +234,4 @@ for mg in metaF.iterByRow():
         os.chdir(origWorkDir)
         
     # debug
-    #sys.exit()
+    sys.exit()

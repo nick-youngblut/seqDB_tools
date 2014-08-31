@@ -70,7 +70,7 @@ class MapperBowtie2(ReadMapper):
                 
 
     def __call__(self, indexFile, readFile, outFile=None, tmpFile=False,
-                   subproc=None, samFile=None, params={'-f': ''}):
+                    params={'-f': ''}):
         """Calling bowtie2 for mapping
 
         Args:
@@ -78,8 +78,6 @@ class MapperBowtie2(ReadMapper):
         readFile -- read file provided to bowtie2
         outFile -- sam output file. If None: using indexFile basename.
         tmpFile -- use a temporary file name (superscedes outFile).
-        subproc -- subprocess?
-        samFile -- output SAM file name. Default to edited indexFile name.
         params -- bowtie2 parameters. Value = '' if boolean parameter
         """
         # outFile name
@@ -88,8 +86,6 @@ class MapperBowtie2(ReadMapper):
             outFile = basename + '.sam'
         if tmpFile is True:
             outFile = randomString() + '.sam'
-        if samFile is not None:
-            outFile = samFile
 
         # setting params if any exist
         params = ' '.join( ['{0} {1}'.format(k,v) for k,v in params.items()] )
@@ -101,13 +97,9 @@ class MapperBowtie2(ReadMapper):
         os.system(cmd)
 
         # return
-        if subproc is not None:
-            subproc.send(outFile)
-            subproc.close()
-        else:
-            return outFile
+        return outFile        
+
         
-            
     def parallel(self, names, mg, nprocs=1, **kwargs):
         """Calling mapper using multiple processors.
 
@@ -120,7 +112,6 @@ class MapperBowtie2(ReadMapper):
         Return:
         refSamFile attrib set for each name in names 
         """
-
         # making list of tuples (indexFile, readFile)
         lt = [(name.get_indexFile(), mg.get_readFile()) for name in names.iter_names()]
 
@@ -152,10 +143,6 @@ class MapperBowtie2(ReadMapper):
 
         # calling mapper
         samFiles = parmap.starmap(new_mapper, trimmed, processes=nprocs)
-
-        # creating a numpy array for output
-        #simSamFiles = np.array([['' for i in range(n_refs)] for j in range(n_refs)], dtype=object)
-
         
         # appending samFiles to tuple
         pairwiseList2 = []
