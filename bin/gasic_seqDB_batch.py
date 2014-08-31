@@ -132,7 +132,7 @@ for mg in metaF.iterByRow():
             
     #-- determine read stats --#
     ## skipping if no downloaded file found
-    mg.get_ReadStats(fileFormat='fasta')
+    mg.get_readStats(fileFormat='fasta')
 
 
     #-- read mapping --#
