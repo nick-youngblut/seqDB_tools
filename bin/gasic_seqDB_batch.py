@@ -20,7 +20,10 @@ Options:
   <stages>...        MG-RAST processing stages to attempt download of. 
                      Each in list will be tried until successful download. [default: 200,150]
   --seqDB=<seqDB>    Sequence database name ('MGRAST' or 'SRA'). [default: MGRAST]
-  --nprocs=<n>       Number of parallel processes. [default: 1]
+  --ncores-map=<nm>  Number of parallel read mapping calls. [default: 1]  
+  --ncores-sim=<ns>  Number of parallel read simulations. [default: 1]
+  --ncores-3rd=<nt>  Number of cores used by 3rd party software. [default: 1]
+  --nbootstrap=<nb>  Number of bootstrap iterations. [default: 100]
   --version          Show version.
   -h --help          Show this screen.
   --debug            Debug mode
@@ -35,6 +38,9 @@ Description:
                 optional 2nd column: 'reference_index'
                 The index is the mapper index file (eg., bowtie2 index),
                 which is only needed if the mappers requires an index file.
+
+  The script provides multiple levels of parallelization (parallel call of 3rd party
+  software and setting number of cores used by the software during the call).
 """
 
 from docopt import docopt
@@ -46,6 +52,7 @@ if __name__ == '__main__':
     if len(args['<stages>']) == 0:
         args['<stages>'] = [200, 150]
 
+        
 #--- Package import ---#
 import os
 import sys
@@ -54,7 +61,6 @@ import shutil
 from collections import defaultdict
 import multiprocessing as mp
 
-from Bio import SeqIO
 import pysam
 import numpy as np
 import parmap
@@ -67,7 +73,7 @@ sys.path.append(libDir)
 
 import gasicBatch.MetaFile as MetaFile
 import gasicBatch.NameFile as NameFile
-from gasicBatch.ReadMapper import ReadMapper, PairwiseMapper
+from gasicBatch.ReadMapper import ReadMapper #, PairwiseMapper
 from gasicBatch.ReadSimulator import ReadSimulator
 from gasicBatch.CorrectAbundances import CorrectAbundances
 
@@ -86,6 +92,12 @@ fileExists(args['<nameFile>'])
 
 
 #--- Main ---#
+# unpack args
+ncores_map = int(args['--ncores-map'])
+ncores_sim = int(args['--ncores-sim'])
+ncores_3rd = int(args['--ncores-3rd'])
+nBootstrap = int(args['--nbootstrap'])
+
 # nameFile loading
 nameF = NameFile.NameFile(args['<nameFile>'])
 
@@ -101,124 +113,107 @@ elif args['--seqDB'] == 'SRA':
 # current working directory
 origWorkDir = os.path.abspath(os.curdir)
 
-
 # each metagenome (getting from certain seqDB)
 for mg in metaF.iterByRow():
 
-    ## unpack
+    # unpack
     mgID = mg.get_ID()
     
-    # making temp directory and chdir; all processes for metagenome done in temp dir
+    # making temp directory and chdir
     if args['--debug'] == False:
         tmpdir = tempfile.mkdtemp()
         os.chdir(tmpdir)
+    else:
+        tmpdir = os.curdir
 
     # downloading metagenome reads
     dw_success = mg.download( )
     if not dw_success: 
         sys.stderr.write('No read file downloaded for the metagenome "{0}".\n\tMoving to next metagenome\n'.format(mgID))
         continue
-        
-    # determine read stats
+            
+    #-- determine read stats --#
     ## skipping if no downloaded file found
     mg.get_readStats(fileFormat='fasta')
 
-    
-    #-- mapping metagenome reads to reference fasta(s) --#
+
+    #-- read mapping --#
     ## creating object for specific mapper
     mapper = ReadMapper.getMapper('bowtie2')    # factory class
    # mapper.set_paramsByReadStats(mg)
-            
-    ### getting iterable and args
-    indexFiles = [name.get_indexFile() for name in nameF.iter_names()]
-    ### calling mapper via parmap
-    readFile = mg.get_readFile()
-    ret = parmap.map(mapper, indexFiles, readFile, tmpdir, processes=N_procs)
-    ### assigning sam file names to name instances
-    ret = dict(ret)
-    for name in nameF.iter_names():
-        indexFile = name.get_indexFile()
-        name.set_refSamFile(ret[indexFile])
     
-    
+    ## calling mapper for each index file
+    mapper.parallel(nameF, mg, nprocs=ncores_map, params={'-f':'', '-p':ncores_3rd})
+
+
     #-- similarity estimation by pairwise mapping simulated reads --#
     ## select simulator
     simulator = ReadSimulator.getSimulator('mason')
     ## setting params based on metagenome read stats & platform
     platform, simParams = simulator.get_paramsByReadStats(mg)
-    
-    ## foreach refFile: simulate reads
-    fasta_index = [name.get_fastaFile(),name.get_indexFile() for name in nameF.iter_names()]
-    ret = parmap.map(simulator, fasta_index, tmpdir, platform, simParams, processes=N_procs)
-
-    #simReadsFiles = dict()
-    #num_reads = None
-    
-#    simulator.run_simulatorMP(nameF, platform=platform, params=simParams)
-
-#    sys.exit()
-    
-    # for name in nameF.iter_names():
-    #     # unpack
-    #     fastaFile = name.get_fastaFile()
-    #     indexFile = name.get_indexFile()
-    #     #readFile = mg.get_readFile()    
-
-    #     # read simulation 
-    #     outDir = os.path.abspath(os.path.curdir)
-    #     (simReadsFile,fileType) = simulator.run_simulator(fastaFile, outDir=outDir,
-    #                                                       platform=platform,
-    #                                                       params={platform : simParams})
-        
-    #     # find out how many reads were generated
-    #     ### Attention: Here we assume that all files contain the same number of read and are stored in fastq format
-    #     num_reads = len( [ True for i in SeqIO.parse(simReadsFile, fileType) ] )
-
-    #     ## convert readFile to fasta if needed
-    #     if fileType.lower() == 'fastq':
-    #         fastaFile = os.path.splitext(simReadsFile)[0] + '.fna'
-    #         SeqIO.convert(simReadsFile, 'fastq', fastaFile, 'fasta')
-    #         simReadsFile = fastaFile
-        
-    #     # saving reads file names in names class
-    #     name.set_simReadsFile(simReadsFile)
+    ## calling simulator using process pool
+    simulator.parallel(nameF, nprocs=ncores_sim, outDir=tmpdir, platform=platform, params=simParams)
+    # finding out how many reads were generated
+    num_reads = [name.get_simReadsCount() for name in nameF.iter_names()]
+    if len(set(num_reads)) > 1:
+        sys.stderr.write('Warning: differing numbers of reads generated by simulator')
+    num_reads = num_reads[0]
 
         
-    # pairwise mapping of the simulated reads from each ref to all references 
-    pwm = PairwiseMapper(nameF, mapper)
-    simSamFiles = pwm.pairwiseMap()
+    #-- pairwise mapping of the simulated reads from each ref to all references --#
+    # making list of tuples for all pairwise comparisons
+    pairwiseComps = []
+    n_refs = nameF.len()
+    for i in range(n_refs):
+        # getting simulated reads from first query reference taxon
+        nameQuery = nameF.get_name(i)
+        simReadsFile = nameQuery.get_simReadsFile()
+        
+        for j in range(n_refs):
+        # getting index file of subject for mapping to subject
+            nameSubject = nameF.get_name(j)
+            indexFile = nameSubject.get_indexFile()
+            # append values
+            pairwiseComps.append((i,j,indexFile,simReadsFile,))
 
-    
-    # parse sam files to create a numpy array of reads mapped
-    (I,J) = simSamFiles.shape
-    mappedReads = np.zeros((I, J, num_reads))    
-    for i in range(I):
-        for j in range(J):
-            #print simSamFiles[i,j]
-            
-            # count the reads in i mapping to subject j
-            samfile = pysam.Samfile(simSamFiles[i,j], "r")
-            mappedReads[i,j,:] = np.array( [int(not read.is_unmapped) for read in samfile] )
-            samfile.close()
-               
-            
+    # pairwise mapping
+    pairwiseComps = mapper.pairwise(pairwiseComps, nprocs=ncores_map,
+                                    tmpFile=True, params={'-f':'', '-p':ncores_3rd})
+
+    # convert to numpy array
+    simSamFiles = np.array([['' for i in range(n_refs)] for j in range(n_refs)], dtype=object)
+    for row in pairwiseComps:
+        i = row[0]
+        j = row[1]
+        simSamFile = row[4]
+        simSamFiles[i,j] = simSamFile
+        
+    # parse SAM files to create numpy array of number reads mapped    
+    mappedReads = np.zeros((n_refs, n_refs, num_reads))
+    for i in range(n_refs):
+         for j in range(n_refs):
+             # count the reads in i mapping to subject j
+             samfh = pysam.Samfile(simSamFiles[i,j], "r")
+             mappedReads[i,j,:] = np.array( [int(not read.is_unmapped) for read in samfh] )
+             samfh.close()
+             
     # save the similarity matrix
     matrixOutFile = mgID + '_simMtx'
     np.save(matrixOutFile, mappedReads)
     matrixOutFile += '.npy'
     sys.stderr.write('Wrote similarity matrix: {}\n'.format(matrixOutFile))
-            
 
-    # similarity correction 
-    ## input: matrix & original reads -> ref sam file
-    refSamFiles = [name.get_refSamFile() for name in nameF.iter_names()]
-    CorAbund = CorrectAbundances()
-
-    nBootstrap = 3
-    result = CorAbund.similarityCorrection(refSamFiles, matrixOutFile, nBootstrap)
     
 
-    # writing output
+    #-- similarity correction --#
+    ## input: matrix & original reads -> ref sam file
+    ## will bootstrap similarity matrix based on 'nBootstrap'
+    refSamFiles = [name.get_refSamFile() for name in nameF.iter_names()]
+    CorAbund = CorrectAbundances()            # create instance
+    result = CorAbund.similarityCorrection(refSamFiles, matrixOutFile, nBootstrap)
+
+    
+    #-- writing output --#
     for i,name in enumerate(nameF.get_names()):
         total = result['total']
         outvals = dict(

@@ -92,10 +92,15 @@ class Name(object):
 
     def get_simReadsFile(self):
         return self.simReadsFile
+
+    def get_simReadsFileType(self):
+        return self.simReadsFileType
+
+    def get_simReadsCount(self):
+        return self.simReadsCount
         
     def get_refSamFile(self):
         return self.refSamFile
-
 
     # setters
     def set_refSamFile(self, refSamFile):
@@ -104,6 +109,12 @@ class Name(object):
     def set_simReadsFile(self, simReadsFile):
         self.simReadsFile = simReadsFile
 
+    def set_simReadsFileType(self, fileType):
+        self.simReadsFileType = fileType
+
+    def set_simReadsCount(self, count):
+        self.simReadsCount = count
+        
     def add_simSamFile(self, i, j, samSimFile):
         """setting simulation sam files (pairwise mappings to subject (meta)genomes)
 

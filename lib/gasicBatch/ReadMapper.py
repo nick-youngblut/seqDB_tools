@@ -3,6 +3,9 @@
 import sys
 import os
 from distutils.spawn import find_executable
+import multiprocessing as mp
+from functools import partial
+import parmap
 import numpy as np
 import uuid
 import multiprocessing as mp
@@ -66,28 +69,28 @@ class MapperBowtie2(ReadMapper):
         self.exe = executable
                 
 
-    def run_mapper(self, indexFile, readFile, outDir, samFile=None, params={'-f': ''}):
+    def __call__(self, indexFile, readFile, outFile=None, tmpFile=False,
+                   subproc=None, samFile=None, params={'-f': ''}):
         """Calling bowtie2 for mapping
 
         Args:
         indexFile -- bowtie2 index file
         readFile -- read file provided to bowtie2
-        outDir -- output directory. 
-        samFile -- sam output file. If None: using indexFile basename.
+        outFile -- sam output file. If None: using indexFile basename.
+        tmpFile -- use a temporary file name (superscedes outFile).
+        subproc -- subprocess?
+        samFile -- output SAM file name. Default to edited indexFile name.
         params -- bowtie2 parameters. Value = '' if boolean parameter
         """
-        # output
-        ## outDir
-        (basename, ext) = os.path.splitext(indexFile)
-        (basedir, filename) = os.path.split(basename)
-        ## samFile name
-        if samFile is None:
-            #(basename, ext) = os.path.splitext(indexFile)
-            basefile = os.path.join(outDir, filename)
-            samFile = basefile + '_' + randomString() + '.sam'
-        else:
-            samFile = os.path.join(outDir, basename) + ext
-        
+        # outFile name
+        if outFile is None:
+            (basename, ext) = os.path.splitext(indexFile)
+            outFile = basename + '.sam'
+        if tmpFile is True:
+            outFile = randomString() + '.sam'
+        if samFile is not None:
+            outFile = samFile
+
         # setting params if any exist
         params = ' '.join( ['{0} {1}'.format(k,v) for k,v in params.items()] )
         
@@ -97,7 +100,70 @@ class MapperBowtie2(ReadMapper):
         sys.stderr.write( 'Executing: "{0}"\n'.format(cmd) )
         os.system(cmd)
 
-        return [indexFile, samFile]
+        # return
+        if subproc is not None:
+            subproc.send(outFile)
+            subproc.close()
+        else:
+            return outFile
+        
+            
+    def parallel(self, names, mg, nprocs=1, **kwargs):
+        """Calling mapper using multiple processors.
+
+        Args:
+        names -- NameFile instance with iter_names() method
+        mg -- MetaFile instance with readFile attrib
+        nprocs -- number of parallel calls
+        kwargs -- passed to mapper call
+        
+        Return:
+        refSamFile attrib set for each name in names 
+        """
+
+        # making list of tuples (indexFile, readFile)
+        lt = [(name.get_indexFile(), mg.get_readFile()) for name in names.iter_names()]
+
+        # altering function kwargs
+        new_mapper = partial(self, **kwargs)
+
+        # calling mapper
+        samFiles = parmap.starmap(new_mapper, lt, processes=nprocs)
+
+        # adding samFile attrib to name instances
+        for i,name in enumerate(names.iter_names()):
+            name.set_refSamFile(samFiles[i])
+
+
+    def pairwise(self, pairwiseList, nprocs=1, **kwargs):
+        """Pairwise read mapping based on list of references and reads to map.
+
+        Args:
+        pairwiseList -- list of tuples (i,j,refIndex,readFile)
+            'i' and 'j' are comparison indices
+        nprocs -- max number of parallel mapper calls
+        kwargs -- passsed to mapper method
+        """
+        # adding kwargs to function
+        new_mapper = partial(self, **kwargs)
+
+        # making trimmed list of tuples
+        trimmed = [(i[2],i[3],) for i in pairwiseList]
+
+        # calling mapper
+        samFiles = parmap.starmap(new_mapper, trimmed, processes=nprocs)
+
+        # creating a numpy array for output
+        #simSamFiles = np.array([['' for i in range(n_refs)] for j in range(n_refs)], dtype=object)
+
+        
+        # appending samFiles to tuple
+        pairwiseList2 = []
+        for i,samFile in enumerate(samFiles):
+            pairwiseList2.append(pairwiseList[i] + (samFile,))
+
+        # return
+        return pairwiseList2        
         
             
     def __call__(self, indexFile, readFile, outDir, samFile=None, params={'-f': ''}):
@@ -130,7 +196,9 @@ class MapperBowtie2(ReadMapper):
     
 
         
-class PairwiseMapper(object):
+
+
+class PairwiseMapper_OLD(object):
     """Class for pairwise read mapping"""
 
     def __init__(self, name, mapper):
