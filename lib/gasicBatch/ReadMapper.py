@@ -58,7 +58,7 @@ class MapperBowtie2(ReadMapper):
         self.exe = executable
                 
 
-    def __call__(self, indexFile, readFile, outFile=None,
+    def __call__(self, indexFile, readFile, outFile=None, tmpFile=False,
                    subproc=None, samFile=None, params={'-f': ''}):
         """Calling bowtie2 for mapping
 
@@ -66,6 +66,7 @@ class MapperBowtie2(ReadMapper):
         indexFile -- bowtie2 index file
         readFile -- read file provided to bowtie2
         outFile -- sam output file. If None: using indexFile basename.
+        tmpFile -- use a temporary file name (superscedes outFile).
         subproc -- subprocess?
         samFile -- output SAM file name. Default to edited indexFile name.
         params -- bowtie2 parameters. Value = '' if boolean parameter
@@ -74,6 +75,8 @@ class MapperBowtie2(ReadMapper):
         if outFile is None:
             (basename, ext) = os.path.splitext(indexFile)
             outFile = basename + '.sam'
+        if tmpFile is True:
+            outFile = randomString() + '.sam'
         if samFile is not None:
             outFile = samFile
 
@@ -119,7 +122,38 @@ class MapperBowtie2(ReadMapper):
         # adding samFile attrib to name instances
         for i,name in enumerate(names.iter_names()):
             name.set_refSamFile(samFiles[i])
-                                
+
+
+    def pairwise(self, pairwiseList, nprocs=1, **kwargs):
+        """Pairwise read mapping based on list of references and reads to map.
+
+        Args:
+        pairwiseList -- list of tuples (i,j,refIndex,readFile)
+            'i' and 'j' are comparison indices
+        nprocs -- max number of parallel mapper calls
+        kwargs -- passsed to mapper method
+        """
+        # adding kwargs to function
+        new_mapper = partial(self, **kwargs)
+
+        # making trimmed list of tuples
+        trimmed = [(i[2],i[3],) for i in pairwiseList]
+
+        # calling mapper
+        samFiles = parmap.starmap(new_mapper, trimmed, processes=nprocs)
+
+        # creating a numpy array for output
+        #simSamFiles = np.array([['' for i in range(n_refs)] for j in range(n_refs)], dtype=object)
+
+        
+        # appending samFiles to tuple
+        pairwiseList2 = []
+        for i,samFile in enumerate(samFiles):
+            pairwiseList2.append(pairwiseList[i] + (samFile,))
+
+        # return
+        return pairwiseList2        
+        
             
     def make_index(self,subjectFile, outFile=None, **kwargs):
         """Making index file for subject fasta file
