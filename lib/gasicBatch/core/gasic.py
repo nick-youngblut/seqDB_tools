@@ -25,6 +25,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """
 
+import sys
 import numpy as np
 import numpy.linalg as la
 import scipy.optimize as opt
@@ -158,7 +159,7 @@ def bootstrap(reads, smat_raw, B, test_c=0.01):
     fails = np.zeros( (B,M) )
 
     for b in range(B):
-        print "... bootstrapping %i of %i"%(b+1,B)
+        sys.stderr.write("... bootstrapping {} of {}\n".format(b+1,B))
         # select a bootstrap sample 
         random_set = np.random.randint(N,size=N)
 

@@ -32,7 +32,7 @@ class CorrectAbundances(object):
 
 	# find out the total number of reads for first sam file
         total = len( [1 for read in pysam.Samfile(samFiles[0], "r")] )
-	print "...found {} reads".format(total)
+	sys.stderr.write("...found {} reads\n".format(total))
 
 	# initialize some arrays
 	#   mapping information; mapped[i,j]=1 if read j was successfully mapped to i.
@@ -43,7 +43,7 @@ class CorrectAbundances(object):
 
 	# analyze the SAM files
 	for n_ind,samFile in enumerate(samFiles):
-            print "...analyzing SAM-File %i of %i"%(n_ind+1, len(samFiles))
+            sys.stderr.write("...analyzing SAM-File {} of {}\n".format(n_ind+1, len(samFiles)))
             # samfile filename
             sf = pysam.Samfile(samFile, "r")
 
