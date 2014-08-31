@@ -22,7 +22,8 @@ Options:
   --seqDB=<seqDB>    Sequence database name ('MGRAST' or 'SRA'). [default: MGRAST]
   --ncores-map=<nm>  Number of parallel read mapping calls. [default: 1]  
   --ncores-sim=<ns>  Number of parallel read simulations. [default: 1]
-  --ncores-3rd=<nt   Number of cores used by 3rd party software. [default: 1] 
+  --ncores-3rd=<nt>  Number of cores used by 3rd party software. [default: 1]
+  --nbootstrap=<nb>  Number of bootstrap iterations. [default: 100]
   --version          Show version.
   -h --help          Show this screen.
   --debug            Debug mode
@@ -37,6 +38,9 @@ Description:
                 optional 2nd column: 'reference_index'
                 The index is the mapper index file (eg., bowtie2 index),
                 which is only needed if the mappers requires an index file.
+
+  The script provides multiple levels of parallelization (parallel call of 3rd party
+  software and setting number of cores used by the software during the call).
 """
 
 from docopt import docopt
@@ -90,6 +94,7 @@ fileExists(args['<nameFile>'])
 ncores_map = int(args['--ncores-map'])
 ncores_sim = int(args['--ncores-sim'])
 ncores_3rd = int(args['--ncores-3rd'])
+nBootstrap = int(args['--nbootstrap'])
 
 # nameFile loading
 nameF = NameFile.NameFile(args['<nameFile>'])
@@ -180,8 +185,7 @@ for mg in metaF.iterByRow():
         j = row[1]
         simSamFile = row[4]
         simSamFiles[i,j] = simSamFile
-    
-    
+        
     # parse SAM files to create numpy array of number reads mapped    
     mappedReads = np.zeros((n_refs, n_refs, num_reads))
     for i in range(n_refs):
@@ -190,73 +194,24 @@ for mg in metaF.iterByRow():
              samfh = pysam.Samfile(simSamFiles[i,j], "r")
              mappedReads[i,j,:] = np.array( [int(not read.is_unmapped) for read in samfh] )
              samfh.close()
-
-    print mappedReads
-    sys.exit()
              
-    
-    ## resulting SAM file names saves as numpy array
-    # n_refs = nameF.len()
-    # simSamFiles = np.array([['' for i in range(n_refs)] for j in range(n_refs)], dtype=object)
-    # for i in range(n_refs):
-    #     # getting simulated reads from first query reference taxon
-    #     nameQuery = nameF.get_name(i)
-    #     simReadsFile = nameQuery.get_simReadsFile()
-        
-    #     for j in range(n_refs):
-    #     # getting index file of subject for mapping to subject
-    #         nameSubject = nameF.get_name(j)
-    #         indexFile = nameSubject.get_indexFile()
-            
-    #         # mapping
-    #         simSamFile = mapper.run_mapper(indexFile, simReadsFile, fileType='fasta')   # f = bowtie2 flag for file type
-            
-    #         # adding samSimFile to names file
-    #         #nameQuery.add_simSamFile(i, j, simSamFile)
-    #         simSamFiles[i,j] = simSamFile
-            
-    # # parse SAM files to create numpy array of number reads mapped
-    # mappedReads = np.zeros((n_refs, n_refs, num_reads))
-    # for i in range(n_refs):
-    #     for j in range(n_refs):
-    #         # count the reads in i mapping to subject j
-    #         samfh = pysam.Samfile(simSamFiles[i,j], "r")
-    #         mappedReads[i,j,:] = np.array( [int(not read.is_unmapped) for read in samfh] )
-
-            
-    # # parse sam files to create a numpy array of reads mapped
-    # (I,J) = simSamFiles.shape
-    # mappedReads = np.zeros((I, J, num_reads))    
-    # for i in range(I):
-    #     for j in range(J):
-    #         #print simSamFiles[i,j]
-            
-    #         # count the reads in i mapping to subject j
-    #         samfile = pysam.Samfile(simSamFiles[i,j], "r")
-    #         mappedReads[i,j,:] = np.array( [int(not read.is_unmapped) for read in samfile] )
-    #         samfile.close()
-               
-
-
-
-            
     # save the similarity matrix
     matrixOutFile = mgID + '_simMtx'
     np.save(matrixOutFile, mappedReads)
     matrixOutFile += '.npy'
     sys.stderr.write('Wrote similarity matrix: {}\n'.format(matrixOutFile))
-            
 
-    # similarity correction 
-    ## input: matrix & original reads -> ref sam file
-    refSamFiles = [name.get_refSamFile() for name in nameF.iter_names()]
-    CorAbund = CorrectAbundances()
-
-    nBootstrap = 3
-    result = CorAbund.similarityCorrection(refSamFiles, matrixOutFile, nBootstrap)
     
 
-    # writing output
+    #-- similarity correction --#
+    ## input: matrix & original reads -> ref sam file
+    ## will bootstrap similarity matrix based on 'nBootstrap'
+    refSamFiles = [name.get_refSamFile() for name in nameF.iter_names()]
+    CorAbund = CorrectAbundances()            # create instance
+    result = CorAbund.similarityCorrection(refSamFiles, matrixOutFile, nBootstrap)
+
+    
+    #-- writing output --#
     for i,name in enumerate(nameF.get_names()):
         total = result['total']
         outvals = dict(
