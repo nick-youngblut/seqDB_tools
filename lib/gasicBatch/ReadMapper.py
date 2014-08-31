@@ -56,7 +56,7 @@ class MapperBowtie2(ReadMapper):
         self.exe = executable
                 
 
-    def run_mapper(self, indexFile, readFile, outFile=None,
+    def __call__(self, indexFile, readFile, outFile=None,
                    subproc=None, samFile=None, params={'-f': ''}):
         """Calling bowtie2 for mapping
 
@@ -90,8 +90,29 @@ class MapperBowtie2(ReadMapper):
             subproc.close()
         else:
             return outFile
+            
+    def run_mapper_async(self, names, mg, nproc=1, **kwargs):
+        """Calling run_mapper using multiple processors.
+        """
+        # iterating
+        pool = mp.Pool(processes=nproc)
+        outFiles = []
+        for name in names.iter_names():
+            # unpack
+            indexFile = name.get_indexFile()
+            readFile = mg.get_readFile()
+            # mapper params
+            res = pool.apply_async(self, args=(indexFile, readFile,), kwds=kwargs)
+            samFile = res.get()
+            name.set_refSamFile(samFile)
+            #outFiles.append( (indexFile, res.get(),) )
+            
+        pool.close()
+        pool.join()
 
-
+        
+        #return outFiles
+        
             
     def make_index(self,subjectFile, outFile=None, **kwargs):
         """Making index file for subject fasta file

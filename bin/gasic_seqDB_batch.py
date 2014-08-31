@@ -20,7 +20,9 @@ Options:
   <stages>...        MG-RAST processing stages to attempt download of. 
                      Each in list will be tried until successful download. [default: 200,150]
   --seqDB=<seqDB>    Sequence database name ('MGRAST' or 'SRA'). [default: MGRAST]
-  -p=<p>             Number of cores used by 3rd party software. [default: 1]
+  --ncores-map=<nm>  Number of parallel read mapping calls. [default: 1]  
+  --ncores-sim=<ns>  Number of parallel read simulations. [default: 1]
+  --ncores-3rd=<nt   Number of cores used by 3rd party software. [default: 1] 
   --version          Show version.
   -h --help          Show this screen.
   --debug            Debug mode
@@ -46,6 +48,7 @@ if __name__ == '__main__':
     if len(args['<stages>']) == 0:
         args['<stages>'] = [200, 150]
 
+        
 #--- Package import ---#
 import os
 import sys
@@ -84,7 +87,10 @@ fileExists(args['<nameFile>'])
 
 
 #--- Main ---#
-N_procs = args['-p']
+# unpack args
+ncores_map = int(args['--ncores-map'])
+ncores_sim = int(args['--ncores-sim'])
+ncores_3rd = int(args['--ncores-3rd'])
 
 # nameFile loading
 nameF = NameFile.NameFile(args['<nameFile>'])
@@ -100,7 +106,6 @@ elif args['--seqDB'] == 'SRA':
 
 # current working directory
 origWorkDir = os.path.abspath(os.curdir)
-
 
 # each metagenome (getting from certain seqDB)
 for mg in metaF.iterByRow():
@@ -130,15 +135,7 @@ for mg in metaF.iterByRow():
    # mapper.set_paramsByReadStats(mg)
     
     ## calling mapper for each index file
-    for name in nameF.iter_names():
-        # unpack
-        indexFile = name.get_indexFile()
-        readFile = mg.get_readFile()    
-        # mapper params
-        params={'-f':'', '-p':N_procs}
-        # mapping
-        samFile = mapper.run_mapper(indexFile, readFile, params=params)
-        name.set_refSamFile(samFile)
+    mapper.run_mapper_async(nameF, mg, nproc=ncores_map, params={'-f':'', '-p':ncores_3rd})
 
 
     #-- similarity estimation by pairwise mapping simulated reads --#
