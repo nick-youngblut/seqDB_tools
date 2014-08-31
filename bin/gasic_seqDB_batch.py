@@ -20,6 +20,7 @@ Options:
   <stages>...        MG-RAST processing stages to attempt download of. 
                      Each in list will be tried until successful download. [default: 200,150]
   --seqDB=<seqDB>    Sequence database name ('MGRAST' or 'SRA'). [default: MGRAST]
+  -p=<p>             Number of cores used by 3rd party software. [default: 1]
   --version          Show version.
   -h --help          Show this screen.
   --debug            Debug mode
@@ -83,6 +84,8 @@ fileExists(args['<nameFile>'])
 
 
 #--- Main ---#
+N_procs = args['-p']
+
 # nameFile loading
 nameF = NameFile.NameFile(args['<nameFile>'])
 
@@ -102,11 +105,13 @@ origWorkDir = os.path.abspath(os.curdir)
 # each metagenome (getting from certain seqDB)
 for mg in metaF.iterByRow():
 
+    # unpack
+    mgID = mg.get_ID()
+    
     # making temp directory and chdir
     if args['--debug'] == False:
         tmpdir = tempfile.mkdtemp()
         os.chdir(tmpdir)
-
 
     # downloading metagenome reads
     ret = mg.download( )
@@ -129,63 +134,99 @@ for mg in metaF.iterByRow():
         # unpack
         indexFile = name.get_indexFile()
         readFile = mg.get_readFile()    
+        # mapper params
+        params={'-f':'', '-p':N_procs}
         # mapping
-        samFile = mapper.run_mapper(indexFile, readFile)   # f = bowtie2 flag for file type (fasta)
+        samFile = mapper.run_mapper(indexFile, readFile, params=params)
         name.set_refSamFile(samFile)
-    
 
-    # similarity estimation
+
+    #-- similarity estimation by pairwise mapping simulated reads --#
     ## select simulator
     simulator = ReadSimulator.getSimulator('mason')
     ## setting params based on metagenome read stats & platform
     platform, simParams = simulator.get_paramsByReadStats(mg)
+
+    simulator.run_simulatorMP(nameF, platform=platform, params=simParams)
+    
+    ## foreach refFile: simulate reads
+#    fasta_index = [name.get_fastaFile(),name.get_indexFile() for name in nameF.iter_names()]
+#    ret = parmap.map(simulator, fasta_index, tmpdir, platform, simParams, processes=N_procs)
     
     ## foreach refFile: simulate reads 
     simReadsFiles = dict()
     num_reads = None
-    for name in nameF.iter_names():
-        # unpack
-        fastaFile = name.get_fastaFile()
-        indexFile = name.get_indexFile()
-        readFile = mg.get_readFile()    
+    # for name in nameF.iter_names():
+    #     # unpack
+    #     fastaFile = name.get_fastaFile()
+    #     indexFile = name.get_indexFile()
+    #     readFile = mg.get_readFile()    
 
-        # read simulation 
-        outDir = os.path.abspath(os.path.curdir)
-        (simReadsFile,fileType) = simulator.run_simulator(fastaFile, outDir=outDir,
-                                                          platform=platform,
-                                                          params={platform : simParams})
+    #     # read simulation 
+    #     outDir = os.path.abspath(os.path.curdir)
+    #     (simReadsFile,fileType) = simulator.run_simulator(fastaFile, outDir=outDir,
+    #                                                       platform=platform,
+    #                                                       params={platform : simParams})
         
-        # find out how many reads were generated
-        ### Attention: Here we assume that all files contain the same number of read and are stored in fastq format
-        num_reads = len( [ True for i in SeqIO.parse(simReadsFile, fileType) ] )
+    #     # find out how many reads were generated
+    #     ### Attention: Here we assume that all files contain the same number of read and are stored in fastq format
+    #     num_reads = len( [ True for i in SeqIO.parse(simReadsFile, fileType) ] )
 
-        ## convert readFile to fasta if needed
-        if fileType.lower() == 'fastq':
-            fastaFile = os.path.splitext(simReadsFile)[0] + '.fna'
-            SeqIO.convert(simReadsFile, 'fastq', fastaFile, 'fasta')
-            simReadsFile = fastaFile
+    #     ## convert readFile to fasta if needed
+    #     if fileType.lower() == 'fastq':
+    #         fastaFile = os.path.splitext(simReadsFile)[0] + '.fna'
+    #         SeqIO.convert(simReadsFile, 'fastq', fastaFile, 'fasta')
+    #         simReadsFile = fastaFile
         
-        # saving reads file names in names class
-        name.set_simReadsFile(simReadsFile)
+    #     # saving reads file names in names class
+    #     name.set_simReadsFile(simReadsFile)
 
         
     # pairwise mapping of the simulated reads from each ref to all references 
-    pwm = PairwiseMapper(nameF, mapper)
-    simSamFiles = pwm.pairwiseMap()
-
-    
-    # parse sam files to create a numpy array of reads mapped
-    (I,J) = simSamFiles.shape
-    mappedReads = np.zeros((I, J, num_reads))    
-    for i in range(I):
-        for j in range(J):
-            #print simSamFiles[i,j]
+    ## resulting SAM file names saves as numpy array
+    # n_refs = nameF.len()
+    # simSamFiles = np.array([['' for i in range(n_refs)] for j in range(n_refs)], dtype=object)
+    # for i in range(n_refs):
+    #     # getting simulated reads from first query reference taxon
+    #     nameQuery = nameF.get_name(i)
+    #     simReadsFile = nameQuery.get_simReadsFile()
+        
+    #     for j in range(n_refs):
+    #     # getting index file of subject for mapping to subject
+    #         nameSubject = nameF.get_name(j)
+    #         indexFile = nameSubject.get_indexFile()
             
-            # count the reads in i mapping to subject j
-            samfile = pysam.Samfile(simSamFiles[i,j], "r")
-            mappedReads[i,j,:] = np.array( [int(not read.is_unmapped) for read in samfile] )
-            samfile.close()
+    #         # mapping
+    #         simSamFile = mapper.run_mapper(indexFile, simReadsFile, fileType='fasta')   # f = bowtie2 flag for file type
+            
+    #         # adding samSimFile to names file
+    #         #nameQuery.add_simSamFile(i, j, simSamFile)
+    #         simSamFiles[i,j] = simSamFile
+            
+    # # parse SAM files to create numpy array
+    # mappedReads = np.zeros((n_refs, n_refs, num_reads))
+    # for i in range(n_refs):
+    #     for j in range(n_refs):
+    #         # count the reads in i mapping to subject j
+    #         samfh = pysam.Samfile(simSamFiles[i,j], "r")
+    #         mappedReads[i,j,:] = np.array( [int(not read.is_unmapped) for read in samfh] )
+
+            
+    # # parse sam files to create a numpy array of reads mapped
+    # (I,J) = simSamFiles.shape
+    # mappedReads = np.zeros((I, J, num_reads))    
+    # for i in range(I):
+    #     for j in range(J):
+    #         #print simSamFiles[i,j]
+            
+    #         # count the reads in i mapping to subject j
+    #         samfile = pysam.Samfile(simSamFiles[i,j], "r")
+    #         mappedReads[i,j,:] = np.array( [int(not read.is_unmapped) for read in samfile] )
+    #         samfile.close()
                
+
+
+
             
     # save the similarity matrix
     matrixOutFile = mgID + '_simMtx'
