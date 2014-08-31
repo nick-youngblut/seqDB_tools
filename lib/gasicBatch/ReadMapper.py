@@ -4,6 +4,8 @@ import sys
 import os
 from distutils.spawn import find_executable
 import multiprocessing as mp
+from functools import partial
+import parmap
 import numpy as np
 import uuid
 
@@ -90,29 +92,34 @@ class MapperBowtie2(ReadMapper):
             subproc.close()
         else:
             return outFile
+        
             
-    def run_mapper_async(self, names, mg, nproc=1, **kwargs):
-        """Calling run_mapper using multiple processors.
-        """
-        # iterating
-        pool = mp.Pool(processes=nproc)
-        outFiles = []
-        for name in names.iter_names():
-            # unpack
-            indexFile = name.get_indexFile()
-            readFile = mg.get_readFile()
-            # mapper params
-            res = pool.apply_async(self, args=(indexFile, readFile,), kwds=kwargs)
-            samFile = res.get()
-            name.set_refSamFile(samFile)
-            #outFiles.append( (indexFile, res.get(),) )
-            
-        pool.close()
-        pool.join()
+    def parallel(self, names, mg, nprocs=1, **kwargs):
+        """Calling mapper using multiple processors.
 
+        Args:
+        names -- NameFile instance with iter_names() method
+        mg -- MetaFile instance with readFile attrib
+        nprocs -- number of parallel calls
+        kwargs -- passed to mapper call
         
-        #return outFiles
-        
+        Return:
+        refSamFile attrib set for each name in names 
+        """
+
+        # making list of tuples (indexFile, readFile)
+        lt = [(name.get_indexFile(), mg.get_readFile()) for name in names.iter_names()]
+
+        # altering function kwargs
+        new_mapper = partial(self, **kwargs)
+
+        # calling mapper
+        samFiles = parmap.starmap(new_mapper, lt, processes=nprocs)
+
+        # adding samFile attrib to name instances
+        for i,name in enumerate(names.iter_names()):
+            name.set_refSamFile(samFiles[i])
+                                
             
     def make_index(self,subjectFile, outFile=None, **kwargs):
         """Making index file for subject fasta file
@@ -140,7 +147,9 @@ class MapperBowtie2(ReadMapper):
     
 
         
-class PairwiseMapper(object):
+
+
+class PairwiseMapper_OLD(object):
     """Class for pairwise read mapping"""
 
     def __init__(self, name, mapper):

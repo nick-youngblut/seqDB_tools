@@ -4,6 +4,10 @@ import sys
 import os
 
 from distutils.spawn import find_executable
+import multiprocessing as mp
+import parmap
+from functools import partial
+from Bio import SeqIO
 
 
 class ReadSimulator(object):
@@ -77,13 +81,13 @@ class mason(ReadSimulator):
         return platform, params
             
 
-    def run_simulator(self, refFile, outFile=None, outDir=None,
+    def __call__(self, refFile, outFile=None, outDir=None,
                       platform='illumina', params=None):
         """Calling mason; default for creating illumina reads
 
         Default keyword params for mason (override any of them with params):
 
-        ADD HERE
+        ADD PARAMS HERE
         
         Args:
         refFile -- fasta file using for generating reads
@@ -96,11 +100,11 @@ class mason(ReadSimulator):
         Return:
         string with file name written by mason
         """
-
+        
         # output file: if None: creating from refFile
         if outFile is None:
             (basename, ext) = os.path.splitext(refFile)
-            outFile = basename + '_simReads.fq'        
+            outFile = basename + '_simReads.fasta'        
         if outDir is not None:
             outFile = os.path.join(outDir, os.path.basename(outFile))
         logFile = outFile + '.log'
@@ -112,17 +116,14 @@ class mason(ReadSimulator):
             '-hi' : 0,
             '-hs' : 0,
             '-n' : 100,
-            '-sq' : ''
-        },'454' : {
+            '-sq' : '' },'454' : {
             '-N' : 10000,
             '-hi' : 0,
             '-hs' : 0,
-            '-sq' : ''
-        },'sanger' : {
+            '-sq' : '' },'sanger' : {
             '-N' : 10000,
             '-hi' : 0,
-            '-hs' : 0,
-            '-o' : 'fastq'
+            '-hs' : 0
         }}
         ## changing defaults
         for k,v in defaultParams.items():
@@ -138,6 +139,62 @@ class mason(ReadSimulator):
         
         sys.stderr.write("Executing: {0}\n".format(cmd))
         os.system(cmd)
-        return outFile, 'fastq'
+
+        # output filetype
+        try:
+            defaultParams['sanger']  # sanger only produced as fasta
+            fileType = 'fasta'
+        except KeyError:
+            fileType = 'fastq'
+            
+        # return 
+        return dict(simReadsFile=outFile, simReadsFileType=fileType)
+
+        
+    def parallel(self, names, fileType='fasta', nprocs=1, **kwargs):
+        """Running simulator using apply_async
+
+        Args:
+        names -- NameFile class with iter_names() method
+        nprocs -- max number of parallel simulation calls
+        kwargs -- passed to simulator
+
+        Attribs added to each name instance in names:
+        simReadsFile -- file name of simulated reads
+        simReadsFileType -- file type (eg., 'fasta' or 'fastq')
+        simReadsFileCount -- number of simulated reads
+        """
+        # making list of fasta file to provide simulator call
+        fastaFiles = [name.get_fastaFile() for name in names.iter_names()]
+
+        # settig kwargs
+        new_simulator = partial(self, **kwargs)
+
+        # calling simulator
+        res = parmap.map(new_simulator, fastaFiles, processes=nprocs)
 
 
+        # converting reads to fasta if needed
+        if fileType.lower() == 'fasta':
+            for result in res:
+                simFile = result['simReadsFile']
+                fileType = result['simReadsFileType'].lower()
+                if fileType != 'fasta':
+                    fastaFile = os.path.splitext(simFile)[0] + '.fna'
+                    SeqIO.convert(simFile, fileType, fastaFile, 'fasta')
+                    result['simReadsFile'] = fastaFile
+                    result['simReadsFileType'] = 'fasta'
+
+        
+        # setting attribs in name instances                    
+        for i,name in enumerate(names.iter_names()):
+            # read file
+            simReadsFile = res[i]['simReadsFile']
+            name.set_simReadsFile(simReadsFile)
+            # file type
+            fileType = res[i]['simReadsFileType'].lower()
+            name.set_simReadsFileType(fileType)
+            # number of simulated reads
+            num_reads = len([True for i in SeqIO.parse(simReadsFile, fileType)])
+            name.set_simReadsCount(num_reads)
+            

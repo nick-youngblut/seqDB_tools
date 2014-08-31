@@ -57,7 +57,6 @@ import shutil
 from collections import defaultdict
 import multiprocessing as mp
 
-from Bio import SeqIO
 import pysam
 import numpy as np
 
@@ -69,7 +68,7 @@ sys.path.append(libDir)
 
 import gasicBatch.MetaFile as MetaFile
 import gasicBatch.NameFile as NameFile
-from gasicBatch.ReadMapper import ReadMapper, PairwiseMapper
+from gasicBatch.ReadMapper import ReadMapper #, PairwiseMapper
 from gasicBatch.ReadSimulator import ReadSimulator
 from gasicBatch.CorrectAbundances import CorrectAbundances
 
@@ -117,6 +116,8 @@ for mg in metaF.iterByRow():
     if args['--debug'] == False:
         tmpdir = tempfile.mkdtemp()
         os.chdir(tmpdir)
+    else:
+        tmpdir = os.curdir
 
     # downloading metagenome reads
     ret = mg.download( )
@@ -135,7 +136,7 @@ for mg in metaF.iterByRow():
    # mapper.set_paramsByReadStats(mg)
     
     ## calling mapper for each index file
-    mapper.run_mapper_async(nameF, mg, nproc=ncores_map, params={'-f':'', '-p':ncores_3rd})
+    mapper.parallel(nameF, mg, nprocs=ncores_map, params={'-f':'', '-p':ncores_3rd})
 
 
     #-- similarity estimation by pairwise mapping simulated reads --#
@@ -143,9 +144,12 @@ for mg in metaF.iterByRow():
     simulator = ReadSimulator.getSimulator('mason')
     ## setting params based on metagenome read stats & platform
     platform, simParams = simulator.get_paramsByReadStats(mg)
-
-    simulator.run_simulatorMP(nameF, platform=platform, params=simParams)
+    ## calling simulator using process pool
+    simulator.parallel(nameF, nprocs=ncores_sim, outDir=tmpdir, platform=platform, params=simParams)
+    # finding out how many reads were generated
+    num_reads = [name.get_simReadsCount() for name in nameF.iter_names()]
     
+        
     ## foreach refFile: simulate reads
 #    fasta_index = [name.get_fastaFile(),name.get_indexFile() for name in nameF.iter_names()]
 #    ret = parmap.map(simulator, fasta_index, tmpdir, platform, simParams, processes=N_procs)
