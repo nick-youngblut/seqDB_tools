@@ -99,36 +99,46 @@ class mason(ReadSimulator):
         
         Return:
         string with file name written by mason
-        """
-        
-        # output file: if None: creating from refFile
-        if outFile is None:
-            (basename, ext) = os.path.splitext(refFile)
-            outFile = basename + '_simReads.fasta'        
-        if outDir is not None:
-            outFile = os.path.join(outDir, os.path.basename(outFile))
-        logFile = outFile + '.log'
 
+        """
         # setting params
         ## defaults
         defaultParams = {'illumina' : {
             '-N' : 10000,
             '-hi' : 0,
             '-hs' : 0,
-            '-n' : 100,
-            '-sq' : '' },'454' : {
+            '-n' : 100 }, '454' : {
             '-N' : 10000,
             '-hi' : 0,
-            '-hs' : 0,
-            '-sq' : '' },'sanger' : {
+            '-hs' : 0 }, 'sanger' : {
             '-N' : 10000,
             '-hi' : 0,
-            '-hs' : 0
-        }}
+            '-hs' : 0 }}
         ## changing defaults
         for k,v in defaultParams.items():
             if params.has_key(k):
                 defaultParams[k].update(params[k])
+
+        
+        # output filetype
+        fileType = 'fasta'
+        for k,v in defaultParams.items():
+            if '-sq' in v.keys() or '--simulate-qualities' in v.keys():
+                fileType = 'fastq'        
+
+                
+        # output file: if None: creating from refFile
+        if outFile is None:
+            (basename, ext) = os.path.splitext(refFile)
+            if fileType == 'fasta':
+                ext = '.fa'
+            else:
+                ext = '.fq'
+            outFile = basename + '_simReads' + ext
+        if outDir is not None:
+            outFile = os.path.join(outDir, os.path.basename(outFile))
+        logFile = outFile + '.log'
+
         
         ## params as string
         cmdParams = ' '.join(['{} {}'.format(k,v) for k,v in defaultParams[platform].items()])
@@ -140,13 +150,7 @@ class mason(ReadSimulator):
         sys.stderr.write("Executing: {0}\n".format(cmd))
         os.system(cmd)
 
-        # output filetype
-        try:
-            defaultParams['sanger']  # sanger only produced as fasta
-            fileType = 'fasta'
-        except KeyError:
-            fileType = 'fastq'
-            
+
         # return 
         return dict(simReadsFile=outFile, simReadsFileType=fileType)
 
