@@ -130,7 +130,8 @@ class MetaFile_MGRAST_row(object):
 
         
     def getPlatform(self):
-        """Determining sequencing platform from metadata file
+        """Determining sequencing platform from metadata file.
+        NoneType returned if the platform cannot be determined.
 
         Column(s) to check:
         seq_method
@@ -138,7 +139,7 @@ class MetaFile_MGRAST_row(object):
         Args:
 
         Return:
-        string identifying sequencing platform
+        string identifying sequencing platform.
         """
         
         # check for column
@@ -243,7 +244,11 @@ class MetaFile_MGRAST_row(object):
 
         # args
         if readFile is None:
-            readFile = self.get_readFile()
+            try:
+                readFile = self.get_readFile()
+            except AttributeError:
+                sys.stderr.write('No readFile found! Returning 0\n')
+                return 0
                 
         # get seq lengths & stats
         seqLens = []

@@ -135,20 +135,26 @@ for mg in metaF.iterByRow():
     else:
         tmpdir = os.curdir
 
-    # downloading metagenome reads
+    #-- downloading metagenome reads --#
     ret = mg.download( )
-    if ret is None: 
+    if ret is None or ret == 0: 
         sys.stderr.write('No read file downloaded for Metagenome {0}. Moving to next metagenome'.format(mgID))
         continue
             
     #-- determine read stats --#
-    mg.get_ReadStats(fileFormat='fasta')
-    ## skipping if platform in platform skip list
+    ret = mg.get_ReadStats(fileFormat='fasta')
+    if not ret:
+        sys.stderr.write('Internal error regarding metagenome "{0}". Moving to next metagenome'.format(mgID))
+        continue        
+        
+    ## skipping if platform in platform skip list or not determined
     mg_platform = mg.get_platform()
     sys.stderr.write('Determined sequencing platform for Metagenome "{}" ---> "{}"\n'.format(mg.get_ID(), mg_platform)) 
     if mg_platform in args['--platform']:
         sys.stderr.write('  The platform is in the --platform list. Skipping metagenome.\n\n')
-        #sys.stderr.write('NOTE: Metagenome "{}" is platform "{}". Skipping.\n\n'.format(mg.get_ID(), mg_platform))
+        continue
+    elif mg_platform is None:
+        sys.stderr.write('  The platform could not be determined. Skipping metagenome.\n\n')
         continue
 
         
@@ -250,4 +256,4 @@ for mg in metaF.iterByRow():
         os.chdir(origWorkDir)
         
     # debug
-    sys.exit()
+    #sys.exit()
