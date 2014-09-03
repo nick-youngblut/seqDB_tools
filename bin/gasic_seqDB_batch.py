@@ -25,6 +25,8 @@ Options:
   --npar-sim=<ns>     Number of parallel read simulations. [default: 1]
   --ncores-3rd=<nt>   Number of cores used by 3rd party software. [default: 1]
   --nbootstrap=<nb>   Number of bootstrap iterations. [default: 100]
+  --nreads-sim=<ns>   Number of reads to simulate per reference. [default: 10000]
+  --last-run=<lr>     Output from last run. Listed metagenomes will be skipped. 
   --version           Show version.
   -h --help           Show this screen.
   --debug             Debug mode
@@ -81,6 +83,7 @@ sys.path.append(libDir)
 libDir = os.path.join(scriptDir, '../lib/gasic-r16/')
 sys.path.append(libDir)
 
+import gasicBatch.lastRunFile as lastRunFile
 import gasicBatch.MetaFile as MetaFile
 import gasicBatch.NameFile as NameFile
 from gasicBatch.ReadMapper import ReadMapper #, PairwiseMapper
@@ -106,11 +109,20 @@ npar_map = int(args['--npar-map'])
 npar_sim = int(args['--npar-sim'])
 ncores_3rd = int(args['--ncores-3rd'])
 nBootstrap = int(args['--nbootstrap'])
+nSimReads = int(args['--nreads-sim'])
 
-# nameFile loading
+
+#-- reading files --#
+# reading lastRun file (if available)
+if args['--last-run']:
+    lastRun = lastRunFile.lastRunFile(args['--last-run'])
+else:
+    lastRun = None
+
+# reading nameFile
 nameF = NameFile.NameFile(args['<nameFile>'])
 
-# metaFile loading
+# reading metaFile
 if args['--seqDB'] == 'MGRAST':
     metaF = MetaFile.MetaFile_MGRAST(fileName=args['<metaFile>'], 
                                      stages=args['<stages>'], 
@@ -128,6 +140,14 @@ for mg in metaF.iterByRow():
     # unpack
     mgID = mg.get_ID()
     
+    # check if exists in last run, if yes: writing old entries & moving to next metagenome
+    if lastRun is not None:
+        df = lastRun.mgEntries([mgID])
+        if df.shape[0] > 0:
+            sys.stderr.write(' Metagenome "{}" in last-run file. Writing old output; moving to next metagenome\n\n'.format(mgID))
+            df.to_csv(sys.stdout, sep='\t', header=None, index=None)
+            continue
+    
     # making temp directory and chdir
     if args['--debug'] == False:
         tmpdir = tempfile.mkdtemp()
@@ -138,13 +158,13 @@ for mg in metaF.iterByRow():
     #-- downloading metagenome reads --#
     ret = mg.download( )
     if ret is None or ret == 0: 
-        sys.stderr.write('No read file downloaded for Metagenome {0}. Moving to next metagenome'.format(mgID))
+        sys.stderr.write('No read file downloaded for Metagenome {0}. Skipping metagenome\n\n'.format(mgID))
         continue
             
     #-- determine read stats --#
     ret = mg.get_ReadStats(fileFormat='fasta')
     if not ret:
-        sys.stderr.write('Internal error regarding metagenome "{0}". Moving to next metagenome'.format(mgID))
+        sys.stderr.write('Internal error regarding metagenome "{0}". Skipping metagenome\n\n'.format(mgID))
         continue        
         
     ## skipping if platform in platform skip list or not determined
@@ -171,7 +191,14 @@ for mg in metaF.iterByRow():
     ## select simulator
     simulator = ReadSimulator.getSimulator('mason')
     ## setting params based on metagenome read stats & platform
-    platform, simParams = simulator.get_paramsByReadStats(mg)
+    platform, simParams = simulator.get_paramsByReadStats(mg, {'--num-reads':nSimReads})
+
+
+    # -- debug
+    print simParams; sys.exit()
+
+
+    
     ## calling simulator using process pool
     simulator.parallel(nameF, nprocs=npar_sim, outDir=tmpdir, platform=platform, params=simParams)
     # finding out how many reads were generated

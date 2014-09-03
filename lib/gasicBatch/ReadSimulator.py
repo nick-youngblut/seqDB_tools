@@ -52,12 +52,13 @@ class mason(ReadSimulator):
         self.exe = executable
 
 
-    def get_paramsByReadStats(self, mg):
+    def get_paramsByReadStats(self, mg, **kwargs):
         """Getting simulator params based on read stats (e.g., read lengths &
         sequencing platform
 
         Args:
         mg -- MetaFile row class
+        kwargs -- added to params
         """
         # params for platform
         platform = None
@@ -71,7 +72,7 @@ class mason(ReadSimulator):
             raise KeyError('"{}" platform is not supported!\n'.format(mg.platform))
             
         # stats
-        params = dict()
+        params = kwargs
         if hasattr(mg, 'readStats'):
             if mg.platform == 'illumina':
                 params['--read-length'] =  mg.readStats['median']
