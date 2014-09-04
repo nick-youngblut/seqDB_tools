@@ -3,6 +3,7 @@ import os
 import re
 import gzip
 import zlib
+from StringIO import StringIO
 
 from Bio import SeqIO
 import scipy
@@ -60,7 +61,7 @@ class MetaFile(object):
     # readFile attr = downloaded read file
     def set_readFile(self, fileName): self.readFile = fileName        
     def get_readFile(self): return self.readFile
-            
+    
 
     
 class MetaFile_MGRAST(MetaFile):
@@ -165,7 +166,8 @@ class MetaFile_MGRAST_row(object):
         Reads are downloaded as gzipped files.
 
         Attrib edit:
-        outFile -- string with downloaded file name
+        readFile -- string with downloaded file name
+        readFileFormat -- sequence file format
         """        
 
         # input check
@@ -174,27 +176,33 @@ class MetaFile_MGRAST_row(object):
         
         # trying each stage
         for stage in self.stages:
-            outFile = self._dlStage(stage, self.ID)            
-            if outFile:
-                self.set_readFile(outFile)
-                return 1
+            ret = self._dlStage(stage, self.ID)            
+            if ret:  # success!
+                return ret
             else:
                 sys.stderr.write(' Requested content was empty! Stage{} did not return anything\n'.format(stage))
-        return 0
+
+        # if fail: set readFile as NoneType
+        self.set_readFile(None)        
+        return False
             
 
     def _dlStage(self, stage, ID, iteration=1, lastIter=9):
         """Downloading the fasta file based on a particular stage and iteration.
+        Will recursively try next iteration until a sequence file is downloaded.
 
         Args:
         stage -- mgrast pipeline stage
         iteration -- iteration through the MGRAST pipeline
         lastIter -- the last iteration that will be tried
+
+        Return:
+        string with downloaded file name; Nonetype if no file
         """
         # lastIter
         if iteration > lastIter:
             sys.stderr.write(' Exceeded iterations. Giving up\n')
-            return 0
+            return False
         
         # initialize url
         url = 'http://api.metagenomics.anl.gov/1/download/'
@@ -205,32 +213,117 @@ class MetaFile_MGRAST_row(object):
         sys.stderr.write( 'Sending request: "{0}"\n'.format(url) )
         req = requests.get(url)
         sys.stderr.write(' Request status: {0}\n'.format(str(req.status_code)))
-        if req.status_code != 200:   # try next stage 
+        if req.status_code != 200:   # request failed; try next stage 
             sys.stderr.write('  Request != 200. Stage{} did not return a valid file!\n'.format(stage))
-            return 0
+            return False
                 
         # writing content to file
         outFile = ID + '_stage' + stage + '.fasta'
         d = zlib.decompressobj(16+zlib.MAX_WBITS)
         
         # trying to write
-        try:
-            with open(outFile, 'wb') as fd:
-                for chunk in req.iter_content(1000):
-                    fd.write( d.decompress( chunk) )
-            sys.stderr.write(' File written: {0}\n'.format(outFile))
-        except:  # trying next iteration
-            sys.stderr.write(' File was not a compress sequence file! Trying next pipeline iteration!\n')
-            self._dlStage(stage, ID, iteration=iteration + 1)
+        with open(outFile, 'wb') as fd:
+            for chunk in req.iter_content(10000):
+                try:
+                    fd.write( d.decompress(chunk) )
+                except zlib.error:
+                    fd.write( chunk )
 
-        # checking that content was written
-        ## else: try next stage
-        if os.stat(outFile)[6] != 0:
-            #self.set_readFile(outFile)
-            return outFile
+        # determine sequence file format
+        self._set_seqFormat(outFile)
+                    
+        # check that downloaded file is non-empty; if not trying next pipeline iteration
+        if os.stat(outFile)[6] == 0:
+            sys.stderr.write(' File empty. Trying next pipeline iteration!\n')            
+            self._dlStage(stage, ID, iteration=iteration + 1)  # recursive
+        elif not self.get_readFileFormat():
+            sys.stderr.write(' File not a sequence file. Trying next pipeline iteration!\n')            
+            self._dlStage(stage, ID, iteration=iteration + 1)  # recursive            
         else:
-            return 0
+            sys.stderr.write(' File written: {0}\n'.format(outFile))            
+            
+        # setting readFile (outFile)
+        self.set_readFile(outFile)
+        return True
 
+
+    def _set_seqFormat(self, inFile, nlines=100):
+        """Determining the format of the seuqence file.
+
+        Args:
+        inFile -- file name
+        nlines -- number of lines in file to check (starting from top)
+
+        Attrib set:
+        readFileForamt -- set to fasta or fastq or NoneType
+        """
+        # getting top n lines
+        with open(inFile, 'r') as fd:
+            head = '\n'.join([next(fd) for x in xrange(nlines)])
+
+        # format?
+        nseqs_fasta = len( [seq_rec.id for seq_rec in SeqIO.parse(StringIO(head), 'fasta')] )
+        nseqs_fastq = len( [seq_rec.id for seq_rec in SeqIO.parse(StringIO(head), 'fastq')] )
+        
+        if nseqs_fasta > 0 and nseqs_fastq > 0:
+            raise IOError('  The file appears to be both fasta and fastq\n')
+        elif nseqs_fasta > 0:
+            self.set_readFileFormat('fasta')
+        elif nseqs_fastq > 0:
+            self.set_readFileFormat('fastq')
+        else:
+            self.set_readFileFormat(None)
+
+            
+    def is_readFileEmpty(self):
+        """Determine whether read file is empty.
+
+        Return:
+        True if empty or no read file"""
+        if self.get_readFile() is None:
+            return True
+        elif os.stat(self.get_readFile())[6] == 6:
+            return True
+        else:
+            return False
+            
+            
+    def to_fasta(self, rmFile=False):
+        """Converting from fastq to fasta.
+
+        Args:
+        rmFile -- remove old version of file?
+
+        Attrib edit:
+        readFile name set to new file (*.fasta)
+        readFileFormat set to fasta format        
+        """
+        # unpack
+        readFile = self.get_readFile()
+        readFileFormat = self.get_readFileFormat()
+
+        # new file name
+        basename,ext = os.path.splitext(readFile)
+        ## rename file to prevent overwrite
+        if ext == '.fasta':
+            os.rename(readFile, basename + '.tmp')
+            readFile = basename + '.tmp'        
+        newFile = basename + '.fasta'
+
+        # convert
+        SeqIO.convert(readFile, readFileFormat, newFile, 'fasta')
+
+        # remove
+        if rmFile:
+            os.remove(readFile)
+
+        # setting attributes
+        self.set_readFile(newFile)
+        self.set_readFileFormat('fasta')
+
+        return True
+        
+            
     def get_ReadStats(self, readFile=None, fileFormat='fasta'):
         """Loading read file and getting stats:
         Length distribution: min, max, mean, median, stdev
@@ -248,13 +341,16 @@ class MetaFile_MGRAST_row(object):
                 readFile = self.get_readFile()
             except AttributeError:
                 sys.stderr.write('No readFile found! Returning 0\n')
-                return 0
+                return False
                 
         # get seq lengths & stats
         seqLens = []
         for seq_record in SeqIO.parse(readFile, fileFormat):
             seqLens.append( len(seq_record) )
-        
+
+        if len(seqLens) == 0:
+            return False
+            
         # stats on read lengths
         self.readStats = { 
             'min' : min(seqLens),
@@ -263,15 +359,12 @@ class MetaFile_MGRAST_row(object):
             'max' : max(seqLens),
             'stdev' : scipy.std(seqLens)
             }
-        return 1
+        return True
 
-
-        
 
     #-- getters/setters --#
     def get_platform(self):
         return self.platform
-
     def get_ID(self):
         return self.ID
 
@@ -280,5 +373,7 @@ class MetaFile_MGRAST_row(object):
         self.readFile = fileName        
     def get_readFile(self):
         return self.readFile
-
-        
+    def set_readFileFormat(self, fileFormat):
+        self.readFileFormat = fileFormat
+    def get_readFileFormat(self):
+        return self.readFileFormat

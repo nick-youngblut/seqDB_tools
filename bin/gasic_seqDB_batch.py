@@ -76,6 +76,7 @@ import multiprocessing as mp
 
 import pysam
 import numpy as np
+from Bio import SeqIO
 
 scriptDir = os.path.dirname(__file__)
 libDir = os.path.join(scriptDir, '../lib/')
@@ -144,7 +145,8 @@ for mg in metaF.iterByRow():
     if lastRun is not None:
         df = lastRun.mgEntries([mgID])
         if df.shape[0] > 0:
-            sys.stderr.write(' Metagenome "{}" in last-run file. Writing old output; moving to next metagenome\n\n'.format(mgID))
+            msg =  ' Metagenome "{}" in last-run file. Writing old output; moving to next metagenome\n\n'
+            sys.stderr.write(msg.format(mgID))
             df.to_csv(sys.stdout, sep='\t', header=None, index=None)
             continue
     
@@ -156,11 +158,15 @@ for mg in metaF.iterByRow():
         tmpdir = os.curdir
 
     #-- downloading metagenome reads --#
-    ret = mg.download( )
-    if ret is None or ret == 0: 
+    mg.download()
+    ## empty or no file?
+    if mg.is_readFileEmpty():
         sys.stderr.write('No read file downloaded for Metagenome {0}. Skipping metagenome\n\n'.format(mgID))
         continue
-            
+    ## convert to fasta if fasta
+    if mg.get_readFileFormat() == 'fastq':
+        mg.to_fasta(rmFile=True)
+        
     #-- determine read stats --#
     ret = mg.get_ReadStats(fileFormat='fasta')
     if not ret:
@@ -169,7 +175,8 @@ for mg in metaF.iterByRow():
         
     ## skipping if platform in platform skip list or not determined
     mg_platform = mg.get_platform()
-    sys.stderr.write('Determined sequencing platform for Metagenome "{}" ---> "{}"\n'.format(mg.get_ID(), mg_platform)) 
+    msg = 'Determined sequencing platform for Metagenome "{}" ---> "{}"\n\n'
+    sys.stderr.write(msg.format(mg.get_ID(), mg_platform)) 
     if mg_platform in args['--platform']:
         sys.stderr.write('  The platform is in the --platform list. Skipping metagenome.\n\n')
         continue
@@ -191,12 +198,7 @@ for mg in metaF.iterByRow():
     ## select simulator
     simulator = ReadSimulator.getSimulator('mason')
     ## setting params based on metagenome read stats & platform
-    platform, simParams = simulator.get_paramsByReadStats(mg, {'--num-reads':nSimReads})
-
-
-    # -- debug
-    print simParams; sys.exit()
-
+    platform, simParams = simulator.get_paramsByReadStats(mg, params={'-N':nSimReads})
 
     
     ## calling simulator using process pool

@@ -52,13 +52,13 @@ class mason(ReadSimulator):
         self.exe = executable
 
 
-    def get_paramsByReadStats(self, mg, **kwargs):
+    def get_paramsByReadStats(self, mg, params=dict()):
         """Getting simulator params based on read stats (e.g., read lengths &
         sequencing platform
 
         Args:
         mg -- MetaFile row class
-        kwargs -- added to params
+        params -- dict that sets initial params
         """
         # params for platform
         platform = None
@@ -72,7 +72,6 @@ class mason(ReadSimulator):
             raise KeyError('"{}" platform is not supported!\n'.format(mg.platform))
             
         # stats
-        params = kwargs
         if hasattr(mg, 'readStats'):
             if mg.platform == 'illumina':
                 params['--read-length'] =  mg.readStats['median']
@@ -95,7 +94,7 @@ class mason(ReadSimulator):
         outFile -- output
         outDir -- directory to write output. Default: same as refFile
         platform -- sequencing platform
-        params -- parameters passed to mason. dict of dict: {platform : {param : value}}.
+        params -- parameters passed to mason. {param : value}
                   value = '' if param is boolean
         
         Return:
@@ -116,9 +115,9 @@ class mason(ReadSimulator):
             '-hi' : 0,
             '-hs' : 0 }}
         ## changing defaults
-        for k,v in defaultParams.items():
-            if params.has_key(k):
-                defaultParams[k].update(params[k])
+        #for k,v in defaultParams.items():
+        #    if params.has_key(k):
+        defaultParams[platform].update(params)
 
         
         # output filetype
