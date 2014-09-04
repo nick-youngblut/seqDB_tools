@@ -74,7 +74,7 @@ class mason(ReadSimulator):
         # stats
         if hasattr(mg, 'readStats'):
             if mg.platform == 'illumina':
-                params['--read-length'] =  mg.readStats['median']
+                params['--read-length'] =  int(mg.readStats['median'])
             elif mg.platform == '454' or mg.platform == 'sanger':
                 params['--read-length-mean'] = mg.readStats['mean']
                 params['--read-length-error'] = mg.readStats['stdev']
@@ -104,16 +104,18 @@ class mason(ReadSimulator):
         # setting params
         ## defaults
         defaultParams = {'illumina' : {
-            '-N' : 10000,
-            '-hi' : 0,
-            '-hs' : 0,
-            '-n' : 100 }, '454' : {
-            '-N' : 10000,
-            '-hi' : 0,
-            '-hs' : 0 }, 'sanger' : {
-            '-N' : 10000,
-            '-hi' : 0,
-            '-hs' : 0 }}
+            '--num-reads' : 10000,
+            '--haplotype-indel-rate' : 0,
+            '--haplotype-snp-rate' : 0,
+            '--read-length' : 100 },
+            '454' : {
+            '--num-reads' : 10000,
+            '--haplotype-indel-rate' : 0,
+            '--haplotype-snp-rate' : 0 },
+            'sanger' : {
+            '--num-reads' : 10000,
+            '--haplotype-indel-rate' : 0,
+            '--haplotype-snp-rate' : 0 }}
         ## changing defaults
         #for k,v in defaultParams.items():
         #    if params.has_key(k):

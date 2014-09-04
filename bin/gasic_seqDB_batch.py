@@ -198,7 +198,7 @@ for mg in metaF.iterByRow():
     ## select simulator
     simulator = ReadSimulator.getSimulator('mason')
     ## setting params based on metagenome read stats & platform
-    platform, simParams = simulator.get_paramsByReadStats(mg, params={'-N':nSimReads})
+    platform, simParams = simulator.get_paramsByReadStats(mg, params={'--num-reads':nSimReads})
 
     
     ## calling simulator using process pool
