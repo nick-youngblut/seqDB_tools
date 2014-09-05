@@ -104,11 +104,11 @@ class CorrAbundRes(object):
     def write(self, samFiles, outFileName):
         """results into tab separated file."""
         outfh = open(outFileName,'w')
-        outfh.write('\t'.join(['genome name', 'mapped reads', 'estimated reads', 'estimated error', 'p-value']))
+        outfh.write('\t'.join(['genome name', 'total', 'mapped reads', 'estimated reads', 'estimated error', 'p-value']))
         for n_ind,samFile in enumerate(samFiles):
             # Name, mapped reads, corrected reads, estimated error, p-value
-            out = "{name}\t{mapped}\t{corr}\t{error}\t{pval}\n"
-            outfh.write(out.format(name=nm,mapped=num_reads[n_ind],corr=corr[n_ind]*total,error=err[n_ind]*total,pval=p[n_ind]))
+            out = "{name}\t{total}\t{mapped}\t{corr}\t{error}\t{pval}\n"
+            outfh.write(out.format(name=nm,total=total,mapped=num_reads[n_ind],corr=corr[n_ind]*total,error=err[n_ind]*total,pval=p[n_ind]))
             outfh.close()
             print "...wrote results to {}".format(outFileName)
     

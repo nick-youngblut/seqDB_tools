@@ -48,11 +48,12 @@ Description:
 Output:
   * table with columns:
     metagenome_id
-    ref_sequence_file
-    n_reads_mapped
-    corrected_abundacne
-    error
-    pval
+    reference sequence file
+    total reads
+    number of reads mapped
+    corrected number of reads mapped
+    standard error for the number of reads mapped
+    P-value
 """
 
 from docopt import docopt
@@ -269,6 +270,7 @@ for mg in metaF.iterByRow():
         total = result['total']
         outvals = dict(
             ref = name.get_fastaFile(),
+            total = total,
             mapped = result['num_reads'][i],
             corr = result['corr'][i] * total,
             error = result['err'][i] * total,
@@ -277,7 +279,7 @@ for mg in metaF.iterByRow():
             )
 
         # metagenome_id, refSequences, n-mapped, corrected-abundacne, error, pval
-        print '{mgID}\t{ref}\t{mapped}\t{corr}\t{error}\t{pval}'.format(**outvals)
+        print '{mgID}\t{ref}\t{total}\t{mapped}\t{corr}\t{error}\t{pval}'.format(**outvals)
 
         
     # moving back to original working directory
