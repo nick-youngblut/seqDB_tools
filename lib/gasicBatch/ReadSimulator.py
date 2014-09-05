@@ -169,6 +169,9 @@ class mason(ReadSimulator):
         simReadsFile -- file name of simulated reads
         simReadsFileType -- file type (eg., 'fasta' or 'fastq')
         simReadsFileCount -- number of simulated reads
+
+        Return:
+        boolean of run success/fail
         """
         # making list of fasta file to provide simulator call
         fastaFiles = [name.get_fastaFile() for name in names.iter_names()]
@@ -179,7 +182,13 @@ class mason(ReadSimulator):
         # calling simulator
         res = parmap.map(new_simulator, fastaFiles, processes=nprocs)
 
-
+        # checking that simulated reads were created for all references
+        for row in res:
+            if not os.path.isfile(row['simReadsFile']):
+                return False
+            elif os.stat(row['simReadsFile'])[0] == 0:
+                return False
+        
         # converting reads to fasta if needed
         if fileType.lower() == 'fasta':
             for result in res:
@@ -190,8 +199,7 @@ class mason(ReadSimulator):
                     SeqIO.convert(simFile, fileType, fastaFile, 'fasta')
                     result['simReadsFile'] = fastaFile
                     result['simReadsFileType'] = 'fasta'
-
-        
+                    
         # setting attribs in name instances                    
         for i,name in enumerate(names.iter_names()):
             # read file
@@ -200,7 +208,8 @@ class mason(ReadSimulator):
             # file type
             fileType = res[i]['simReadsFileType'].lower()
             name.set_simReadsFileType(fileType)
-            # number of simulated reads
+            # number of simulated reads            
             num_reads = len([True for i in SeqIO.parse(simReadsFile, fileType)])
             name.set_simReadsCount(num_reads)
             
+        return True

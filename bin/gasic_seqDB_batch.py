@@ -200,10 +200,14 @@ for mg in metaF.iterByRow():
     simulator = ReadSimulator.getSimulator('mason')
     ## setting params based on metagenome read stats & platform
     platform, simParams = simulator.get_paramsByReadStats(mg, params={'--num-reads':nSimReads})
-
     
     ## calling simulator using process pool
-    simulator.parallel(nameF, nprocs=npar_sim, outDir=tmpdir, platform=platform, params=simParams)
+    ret = simulator.parallel(nameF, nprocs=npar_sim, outDir=tmpdir, platform=platform, params=simParams)
+    if not ret:
+        msg = '\n  WARNING: Read simulation error for metagenome "{}". Skipping metagenome.\n\n'
+        sys.stderr.write(msg.format(mgID))
+        continue
+        
     # finding out how many reads were generated
     num_reads = [name.get_simReadsCount() for name in nameF.iter_names()]
     if len(set(num_reads)) > 1:
