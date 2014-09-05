@@ -257,23 +257,27 @@ class MetaFile_MGRAST_row(object):
         Attrib set:
         readFileForamt -- set to fasta or fastq or NoneType
         """
-        # getting top n lines
         with open(inFile, 'r') as fd:
-            head = '\n'.join([next(fd) for x in xrange(nlines)])
+            head = ''.join([fd.readline() for x in xrange(nlines)])
 
         # format?
         nseqs_fasta = len( [seq_rec.id for seq_rec in SeqIO.parse(StringIO(head), 'fasta')] )
         nseqs_fastq = len( [seq_rec.id for seq_rec in SeqIO.parse(StringIO(head), 'fastq')] )
         
         if nseqs_fasta > 0 and nseqs_fastq > 0:
-            raise IOError('  The file appears to be both fasta and fastq\n')
+            if nseqs_fasta > nseqs_fastq:
+                self.set_readFileFormat('fasta')
+            elif nseqs_fasta < nseqs_fastq:
+                self.set_readFileFormat('fastq')
+            else:
+                raise IOError('  The file appears to be both fasta and fastq\n')                
         elif nseqs_fasta > 0:
             self.set_readFileFormat('fasta')
         elif nseqs_fastq > 0:
             self.set_readFileFormat('fastq')
         else:
             self.set_readFileFormat(None)
-
+            
             
     def is_readFileEmpty(self):
         """Determine whether read file is empty.
@@ -352,7 +356,8 @@ class MetaFile_MGRAST_row(object):
             return False
             
         # stats on read lengths
-        self.readStats = { 
+        self.readStats = {
+            'n' : len(seqLens),
             'min' : min(seqLens),
             'mean' : scipy.mean(seqLens),
             'median' : scipy.median(seqLens),
@@ -377,3 +382,8 @@ class MetaFile_MGRAST_row(object):
         self.readFileFormat = fileFormat
     def get_readFileFormat(self):
         return self.readFileFormat
+    def get_readCount(self):
+        try:
+            return self.readStats['n']
+        except AttributeError or KeyError:
+            return None

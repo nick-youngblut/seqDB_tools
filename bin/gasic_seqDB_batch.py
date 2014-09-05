@@ -26,6 +26,7 @@ Options:
   --ncores-3rd=<nt>   Number of cores used by 3rd party software. [default: 1]
   --nbootstrap=<nb>   Number of bootstrap iterations. [default: 100]
   --nreads-sim=<ns>   Number of reads to simulate per reference. [default: 10000]
+  --min-reads=<mr>    Minimum reads that a metagenome must contain. [default: 1000]
   --last-run=<lr>     Output from last run. Listed metagenomes will be skipped. 
   --version           Show version.
   -h --help           Show this screen.
@@ -112,7 +113,7 @@ npar_sim = int(args['--npar-sim'])
 ncores_3rd = int(args['--ncores-3rd'])
 nBootstrap = int(args['--nbootstrap'])
 nSimReads = int(args['--nreads-sim'])
-
+minReads = int(args['--min-reads'])
 
 #-- reading files --#
 # reading lastRun file (if available)
@@ -173,6 +174,12 @@ for mg in metaF.iterByRow():
     if not ret:
         sys.stderr.write('Internal error regarding metagenome "{0}". Skipping metagenome\n\n'.format(mgID))
         continue        
+
+    ## skipping if number of reads < minReads
+    if mg.get_readCount() < minReads:
+        msg = '\n  Metagenome "{}" has {} reads, which is < --min-reads. Skipping metagenome\n\n'
+        sys.stderr.write( msg.format(mgID, str(mg.get_readCount())) )
+        continue
         
     ## skipping if platform in platform skip list or not determined
     mg_platform = mg.get_platform()
@@ -184,6 +191,11 @@ for mg in metaF.iterByRow():
     elif mg_platform is None:
         sys.stderr.write('  The platform could not be determined. Skipping metagenome.\n\n')
         continue
+
+
+    # debug download & read stats
+    continue
+    
 
         
     #-- read mapping --#
