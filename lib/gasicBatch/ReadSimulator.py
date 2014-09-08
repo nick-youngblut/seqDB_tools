@@ -52,12 +52,13 @@ class mason(ReadSimulator):
         self.exe = executable
 
 
-    def get_paramsByReadStats(self, mg):
+    def get_paramsByReadStats(self, mg, params=dict()):
         """Getting simulator params based on read stats (e.g., read lengths &
         sequencing platform
 
         Args:
         mg -- MetaFile row class
+        params -- dict that sets initial params
         """
         # params for platform
         platform = None
@@ -71,10 +72,9 @@ class mason(ReadSimulator):
             raise KeyError('"{}" platform is not supported!\n'.format(mg.platform))
             
         # stats
-        params = dict()
         if hasattr(mg, 'readStats'):
             if mg.platform == 'illumina':
-                params['--read-length'] =  mg.readStats['median']
+                params['--read-length'] =  int(mg.readStats['median'])
             elif mg.platform == '454' or mg.platform == 'sanger':
                 params['--read-length-mean'] = mg.readStats['mean']
                 params['--read-length-error'] = mg.readStats['stdev']
@@ -94,41 +94,53 @@ class mason(ReadSimulator):
         outFile -- output
         outDir -- directory to write output. Default: same as refFile
         platform -- sequencing platform
-        params -- parameters passed to mason. dict of dict: {platform : {param : value}}.
+        params -- parameters passed to mason. {param : value}
                   value = '' if param is boolean
         
         Return:
         string with file name written by mason
+
         """
+        # setting params
+        ## defaults
+        defaultParams = {'illumina' : {
+            '--num-reads' : 10000,
+            '--haplotype-indel-rate' : 0,
+            '--haplotype-snp-rate' : 0,
+            '--read-length' : 100 },
+            '454' : {
+            '--num-reads' : 10000,
+            '--haplotype-indel-rate' : 0,
+            '--haplotype-snp-rate' : 0 },
+            'sanger' : {
+            '--num-reads' : 10000,
+            '--haplotype-indel-rate' : 0,
+            '--haplotype-snp-rate' : 0 }}
+        ## changing defaults
+        #for k,v in defaultParams.items():
+        #    if params.has_key(k):
+        defaultParams[platform].update(params)
+
         
+        # output filetype
+        fileType = 'fasta'
+        for k,v in defaultParams.items():
+            if '-sq' in v.keys() or '--simulate-qualities' in v.keys():
+                fileType = 'fastq'        
+
+                
         # output file: if None: creating from refFile
         if outFile is None:
             (basename, ext) = os.path.splitext(refFile)
-            outFile = basename + '_simReads.fasta'        
+            if fileType == 'fasta':
+                ext = '.fa'
+            else:
+                ext = '.fq'
+            outFile = basename + '_simReads' + ext
         if outDir is not None:
             outFile = os.path.join(outDir, os.path.basename(outFile))
         logFile = outFile + '.log'
 
-        # setting params
-        ## defaults
-        defaultParams = {'illumina' : {
-            '-N' : 10000,
-            '-hi' : 0,
-            '-hs' : 0,
-            '-n' : 100,
-            '-sq' : '' },'454' : {
-            '-N' : 10000,
-            '-hi' : 0,
-            '-hs' : 0,
-            '-sq' : '' },'sanger' : {
-            '-N' : 10000,
-            '-hi' : 0,
-            '-hs' : 0
-        }}
-        ## changing defaults
-        for k,v in defaultParams.items():
-            if params.has_key(k):
-                defaultParams[k].update(params[k])
         
         ## params as string
         cmdParams = ' '.join(['{} {}'.format(k,v) for k,v in defaultParams[platform].items()])
@@ -140,13 +152,7 @@ class mason(ReadSimulator):
         sys.stderr.write("Executing: {0}\n".format(cmd))
         os.system(cmd)
 
-        # output filetype
-        try:
-            defaultParams['sanger']  # sanger only produced as fasta
-            fileType = 'fasta'
-        except KeyError:
-            fileType = 'fastq'
-            
+
         # return 
         return dict(simReadsFile=outFile, simReadsFileType=fileType)
 
@@ -163,6 +169,9 @@ class mason(ReadSimulator):
         simReadsFile -- file name of simulated reads
         simReadsFileType -- file type (eg., 'fasta' or 'fastq')
         simReadsFileCount -- number of simulated reads
+
+        Return:
+        boolean of run success/fail
         """
         # making list of fasta file to provide simulator call
         fastaFiles = [name.get_fastaFile() for name in names.iter_names()]
@@ -173,7 +182,13 @@ class mason(ReadSimulator):
         # calling simulator
         res = parmap.map(new_simulator, fastaFiles, processes=nprocs)
 
-
+        # checking that simulated reads were created for all references
+        for row in res:
+            if not os.path.isfile(row['simReadsFile']):
+                return False
+            elif os.stat(row['simReadsFile'])[0] == 0:
+                return False
+        
         # converting reads to fasta if needed
         if fileType.lower() == 'fasta':
             for result in res:
@@ -184,8 +199,7 @@ class mason(ReadSimulator):
                     SeqIO.convert(simFile, fileType, fastaFile, 'fasta')
                     result['simReadsFile'] = fastaFile
                     result['simReadsFileType'] = 'fasta'
-
-        
+                    
         # setting attribs in name instances                    
         for i,name in enumerate(names.iter_names()):
             # read file
@@ -194,7 +208,8 @@ class mason(ReadSimulator):
             # file type
             fileType = res[i]['simReadsFileType'].lower()
             name.set_simReadsFileType(fileType)
-            # number of simulated reads
+            # number of simulated reads            
             num_reads = len([True for i in SeqIO.parse(simReadsFile, fileType)])
             name.set_simReadsCount(num_reads)
             
+        return True

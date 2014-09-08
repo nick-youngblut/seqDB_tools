@@ -32,7 +32,7 @@ class CorrectAbundances(object):
 
 	# find out the total number of reads for first sam file
         total = len( [1 for read in pysam.Samfile(samFiles[0], "r")] )
-	print "...found {} reads".format(total)
+	sys.stderr.write("...found {} reads\n".format(total))
 
 	# initialize some arrays
 	#   mapping information; mapped[i,j]=1 if read j was successfully mapped to i.
@@ -43,7 +43,7 @@ class CorrectAbundances(object):
 
 	# analyze the SAM files
 	for n_ind,samFile in enumerate(samFiles):
-            print "...analyzing SAM-File %i of %i"%(n_ind+1, len(samFiles))
+            sys.stderr.write("...analyzing SAM-File {} of {}\n".format(n_ind+1, len(samFiles)))
             # samfile filename
             sf = pysam.Samfile(samFile, "r")
 
@@ -104,11 +104,11 @@ class CorrAbundRes(object):
     def write(self, samFiles, outFileName):
         """results into tab separated file."""
         outfh = open(outFileName,'w')
-        outfh.write('\t'.join(['genome name', 'mapped reads', 'estimated reads', 'estimated error', 'p-value']))
+        outfh.write('\t'.join(['genome name', 'total', 'mapped reads', 'estimated reads', 'estimated error', 'p-value']))
         for n_ind,samFile in enumerate(samFiles):
             # Name, mapped reads, corrected reads, estimated error, p-value
-            out = "{name}\t{mapped}\t{corr}\t{error}\t{pval}\n"
-            outfh.write(out.format(name=nm,mapped=num_reads[n_ind],corr=corr[n_ind]*total,error=err[n_ind]*total,pval=p[n_ind]))
+            out = "{name}\t{total}\t{mapped}\t{corr}\t{error}\t{pval}\n"
+            outfh.write(out.format(name=nm,total=total,mapped=num_reads[n_ind],corr=corr[n_ind]*total,error=err[n_ind]*total,pval=p[n_ind]))
             outfh.close()
             print "...wrote results to {}".format(outFileName)
     
