@@ -194,8 +194,7 @@ for mg in metaF.iterByRow():
 
 
     # debug download & read stats
-    continue
-    
+    #continue
 
         
     #-- read mapping --#
@@ -302,5 +301,6 @@ for mg in metaF.iterByRow():
     if args['--debug'] == False:
         os.chdir(origWorkDir)
         
+
     # debug
     #sys.exit()
