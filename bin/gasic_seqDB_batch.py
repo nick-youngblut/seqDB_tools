@@ -300,10 +300,12 @@ for mg in metaF.iterByRow():
         print '{mgID}\t{ref}\t{total}\t{mapped}\t{corr}\t{error}\t{pval}'.format(**outvals)
 
         
-    # moving back to original working directory
+    # moving back to original working directory; deleting tmp directory
     if args['--debug'] == False:
+        tmpdir = os.path.abspath(os.curdir)
         os.chdir(origWorkDir)
+        try:
+            shutil.rmtree(tmpdir)
+        except OSError:
+            sys.stderr.write(' WARNING: could not delete temporary directory: {}\n'.format(tmpdir))
         
-
-    # debug
-    #sys.exit()
