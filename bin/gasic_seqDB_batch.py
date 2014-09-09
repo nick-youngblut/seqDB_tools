@@ -24,6 +24,7 @@ Options:
   --npar-map=<nm>     Number of parallel read mapping calls. [default: 1]  
   --npar-sim=<ns>     Number of parallel read simulations. [default: 1]
   --ncores-3rd=<nt>   Number of cores used by 3rd party software. [default: 1]
+  --npar-boot=<pb>    Number of parallel bootstrap iteractions. [default: 1]
   --nbootstrap=<nb>   Number of bootstrap iterations. [default: 100]
   --nreads-sim=<ns>   Number of reads to simulate per reference. [default: 10000]
   --min-reads=<mr>    Minimum reads that a metagenome must contain. [default: 1000]
@@ -112,8 +113,10 @@ npar_map = int(args['--npar-map'])
 npar_sim = int(args['--npar-sim'])
 ncores_3rd = int(args['--ncores-3rd'])
 nBootstrap = int(args['--nbootstrap'])
+npar_boot = int(args['--npar-boot'])
 nSimReads = int(args['--nreads-sim'])
 minReads = int(args['--min-reads'])
+
 
 #-- reading files --#
 # reading lastRun file (if available)
@@ -277,7 +280,7 @@ for mg in metaF.iterByRow():
     ## will bootstrap similarity matrix based on 'nBootstrap'
     refSamFiles = [name.get_refSamFile() for name in nameF.iter_names()]
     CorAbund = CorrectAbundances()            # create instance
-    result = CorAbund.similarityCorrection(refSamFiles, matrixOutFile, nBootstrap)
+    result = CorAbund.similarityCorrection(refSamFiles, matrixOutFile, nBootstrap, npar_boot)
 
     
     #-- writing output --#
