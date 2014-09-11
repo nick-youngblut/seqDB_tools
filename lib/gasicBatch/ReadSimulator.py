@@ -54,11 +54,17 @@ class mason(ReadSimulator):
 
     def get_paramsByReadStats(self, mg, params=dict()):
         """Getting simulator params based on read stats (e.g., read lengths &
-        sequencing platform
+        sequencing platform.
+        For illumina: read-length = median of actual read lengths
+        For 454: read mean and error determined from actual read lengths
 
         Args:
         mg -- MetaFile row class
         params -- dict that sets initial params
+
+        Return:
+        platform -- string
+        params -- dict; {param : value}
         """
         # params for platform
         platform = None
@@ -82,7 +88,7 @@ class mason(ReadSimulator):
             
 
     def __call__(self, refFile, outFile=None, outDir=None,
-                      platform='illumina', params=None):
+                      platform='illumina', params=None, tries=5):
         """Calling mason; default for creating illumina reads
 
         Default keyword params for mason (override any of them with params):
@@ -96,6 +102,7 @@ class mason(ReadSimulator):
         platform -- sequencing platform
         params -- parameters passed to mason. {param : value}
                   value = '' if param is boolean
+        tries -- number of tries to call mason before giving up due to it dying 
         
         Return:
         string with file name written by mason
@@ -117,8 +124,6 @@ class mason(ReadSimulator):
             '--haplotype-indel-rate' : 0,
             '--haplotype-snp-rate' : 0 }}
         ## changing defaults
-        #for k,v in defaultParams.items():
-        #    if params.has_key(k):
         defaultParams[platform].update(params)
 
         
@@ -146,15 +151,30 @@ class mason(ReadSimulator):
         cmdParams = ' '.join(['{} {}'.format(k,v) for k,v in defaultParams[platform].items()])
                     
         # calling
+        ## cmd
         cmd = 'mason {platform} {params} -o {outFile} {refFile} > {logFile}'
         cmd = cmd.format(platform=platform, params=cmdParams, refFile=refFile, outFile=outFile, logFile=logFile)
-        
-        sys.stderr.write("Executing: {0}\n".format(cmd))
-        os.system(cmd)
 
+        ## calling with number of tries
+        for i in range(tries):
+            sys.stderr.write("Executing: {0}\n".format(cmd))
+            retVal = os.system(cmd)
+            if retVal:
+                msg = ' ERROR: mason call returned non-zero value.'
+                if i == tries:
+                    msg = msg + ' Attempting try {}\n'.format(i)
+                else:
+                    msg = msg + ' Maxed out on tries: {}. Giving up.\n'.format(tries)
+                sys.stderr.write(msg)
+                continue
+            else:
+                break
 
-        # return 
-        return dict(simReadsFile=outFile, simReadsFileType=fileType)
+        # return
+        if retVal:
+            return dict(simReadsFile=None, simReadsFileType=None)
+        else:
+            return dict(simReadsFile=outFile, simReadsFileType=fileType)
 
         
     def parallel(self, names, fileType='fasta', nprocs=1, **kwargs):
@@ -182,12 +202,12 @@ class mason(ReadSimulator):
         # calling simulator
         res = parmap.map(new_simulator, fastaFiles, processes=nprocs)
 
-        # checking that simulated reads were created for all references
+        # checking that simulated reads were created for all references; return 1 if no file
         for row in res:
             if not os.path.isfile(row['simReadsFile']):
-                return False
+                return 1
             elif os.stat(row['simReadsFile'])[0] == 0:
-                return False
+                return 1
         
         # converting reads to fasta if needed
         if fileType.lower() == 'fasta':
@@ -212,4 +232,4 @@ class mason(ReadSimulator):
             num_reads = len([True for i in SeqIO.parse(simReadsFile, fileType)])
             name.set_simReadsCount(num_reads)
             
-        return True
+        return 0

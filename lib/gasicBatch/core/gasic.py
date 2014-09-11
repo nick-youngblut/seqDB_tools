@@ -145,11 +145,17 @@ def bootstrap(reads, smat_raw, B, test_c=0.01):
     """
     Similarity correction using a bootstrapping procedure for more robust corrections and error
     estimates.
-    reads:      [numpy.array (M,N)] array with mapping information; reads[m,n]==1, if read n mapped to
-                species m.
-    smat_raw:   mapping information for similarity matrix. species have same ordering as reads array
-    B:          Number of bootstrap samples
-    test_c:     For testing: treat species as not present, if estimated concentration is below test_c.
+
+    Args:
+    reads -- [numpy.array (M,N)] array with mapping information; reads[m,n]==1,
+              if read n mapped to species m.
+    smat_raw -- mapping information for similarity matrix. species have same ordering as reads array
+    B -- Number of bootstrap samples
+    test_c -- For testing: treat species as not present, if estimated concentration is below test_c.
+    
+    Return:
+    [p_values, abundances, variances] -- list of floats
+    
     """
     # M: Number of species, N: Number of reads
     M,N = reads.shape 
@@ -188,7 +194,7 @@ def bootstrap(reads, smat_raw, B, test_c=0.01):
 def _boot_iteration(b, reads, smat_raw, test_c, B, M, N):
     """One bootstrap iteration for bootstrap_par function.
     See bootstrap_par for arg doc."""    
-    sys.stderr.write("... bootstrapping {} of {}\n".format(b+1,B))
+    sys.stderr.write("...bootstrapping {} of {}\n".format(b+1,B))
 
     # arrays for results
     res = {'found' : np.zeros( (1,M) ),
@@ -217,14 +223,19 @@ def _boot_iteration(b, reads, smat_raw, test_c, B, M, N):
 def bootstrap_par(reads, smat_raw, B, test_c=0.01, nprocs=1):
     """
     Similarity correction using a bootstrapping procedure for more robust corrections and error
-    estimates.
-    Bootstrapping conducted in parallel
-    reads:      [numpy.array (M,N)] array with mapping information; reads[m,n]==1, if read n mapped to
-                species m.
-    smat_raw:   mapping information for similarity matrix. species have same ordering as reads array
-    B:          Number of bootstrap samples
-    test_c:     For testing: treat species as not present, if estimated concentration is below test_c.
-    nprocs:     Number of parallel bootstrap processes to perform.
+    estimates. Bootstrapping conducted in parallel.
+
+    Args:
+    reads -- [numpy.array (M,N)] array with mapping information; reads[m,n]==1,
+             if read n mapped to species m.
+    smat_raw -- mapping information for similarity matrix. species have same ordering as reads array
+    B -- Number of bootstrap samples
+    test_c -- For testing: treat species as not present, if estimated concentration is below test_c.
+    nprocs -- Number of parallel bootstrap processes to perform.
+
+    Return:
+    [p_values, abundances, variances] -- list of floats
+    
     """
     # M: Number of species, N: Number of reads
     M,N = reads.shape 
@@ -241,3 +252,5 @@ def bootstrap_par(reads, smat_raw, B, test_c=0.01, nprocs=1):
     abundances = np.mean(corr, axis=0)
     variances = np.var(corr, axis=0)
     return p_values, abundances, variances
+
+    

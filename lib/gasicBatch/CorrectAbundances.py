@@ -53,8 +53,14 @@ class CorrectAbundances(object):
             
         # run similarity correction step
         smat = np.load(smatFile)
-        #p,corr,var = gasic.bootstrap(mapped, smat, nBootstrap)
-        p,corr,var = gasic.bootstrap_par(mapped, smat, nBootstrap, nprocs=npar_boot)
+        
+        if num_reads <= 1000000:   # only multi-core for smaller datasets; bug with large datasets
+            p,corr,var = gasic.bootstrap_par(mapped, smat, nBootstrap, nprocs=npar_boot)
+        else: 
+            msg = ' WARNING: number of reads ({}) is > 1 million. Not using multiple cores\n'
+            sys.stderr.write(msg.format(num_reads))
+            p,corr,var = gasic.bootstrap(mapped, smat, nBootstrap)
+
         err = np.sqrt(var)
         return dict(total=total,num_reads=num_reads,corr=corr,err=err,p=p)
             
@@ -120,6 +126,9 @@ class CorrAbundRes(object):
     
         
 
+
+
+            
 #--- main ---#    
     # numArgs = len(args)
     # if numArgs == 1:

@@ -28,7 +28,7 @@ Options:
   --nbootstrap=<nb>   Number of bootstrap iterations. [default: 100]
   --nreads-sim=<ns>   Number of reads to simulate per reference. [default: 10000]
   --min-reads=<mr>    Minimum reads that a metagenome must contain. [default: 1000]
-  --last-run=<lr>     Output from last run. Listed metagenomes will be skipped. 
+  --last-run=<lr>     Output from last run. Listed metagenomes will be skipped.
   --version           Show version.
   -h --help           Show this screen.
   --debug             Debug mode
@@ -150,7 +150,7 @@ for mg in metaF.iterByRow():
     if lastRun is not None:
         df = lastRun.mgEntries([mgID])
         if df.shape[0] > 0:
-            msg =  ' Metagenome "{}" in last-run file. Writing old output; moving to next metagenome\n\n'
+            msg =  '  Metagenome "{}" in last-run file. Writing old output; moving to next metagenome\n\n'
             sys.stderr.write(msg.format(mgID))
             df.to_csv(sys.stdout, sep='\t', header=None, index=None)
             continue
@@ -216,8 +216,8 @@ for mg in metaF.iterByRow():
     platform, simParams = simulator.get_paramsByReadStats(mg, params={'--num-reads':nSimReads})
     
     ## calling simulator using process pool
-    ret = simulator.parallel(nameF, nprocs=npar_sim, outDir=tmpdir, platform=platform, params=simParams)
-    if not ret:
+    retVal = simulator.parallel(nameF, nprocs=npar_sim, outDir=tmpdir, platform=platform, params=simParams)
+    if retVal:
         msg = '\n  WARNING: Read simulation error for metagenome "{}". Skipping metagenome.\n\n'
         sys.stderr.write(msg.format(mgID))
         continue
