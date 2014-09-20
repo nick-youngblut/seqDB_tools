@@ -161,13 +161,17 @@ class mason(ReadSimulator):
             retVal = os.system(cmd)
             if retVal:
                 msg = ' ERROR: mason call returned non-zero value.'
-                if i == tries:
-                    msg = msg + ' Attempting try {}\n'.format(i)
-                else:
+                if i >= tries:
                     msg = msg + ' Maxed out on tries: {}. Giving up.\n'.format(tries)
-                sys.stderr.write(msg)
-                continue
+                    sys.stderr.write(msg)                
+                    break
+                else:
+                    msg = msg + ' Attempting try {}\n'.format(i + 2)
+                    sys.stderr.write(msg)
+                    continue
             else:
+                msg = ' mason call succeeded on try {}\n'.format(i + 1)
+                sys.stderr.write(msg)
                 break
 
         # return
@@ -204,9 +208,9 @@ class mason(ReadSimulator):
 
         # checking that simulated reads were created for all references; return 1 if no file
         for row in res:
-            if not os.path.isfile(row['simReadsFile']):
+            if row['simReadsFile'] is None or not os.path.isfile(row['simReadsFile']):
                 return 1
-            elif os.stat(row['simReadsFile'])[0] == 0:
+            elif os.stat(row['simReadsFile'])[0] == 0:  # file size = 0
                 return 1
         
         # converting reads to fasta if needed

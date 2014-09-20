@@ -28,7 +28,8 @@ Options:
   --nbootstrap=<nb>   Number of bootstrap iterations. [default: 100]
   --nreads-sim=<ns>   Number of reads to simulate per reference. [default: 10000]
   --min-reads=<mr>    Minimum reads that a metagenome must contain. [default: 1000]
-  --last-run=<lr>     Output from last run. Listed metagenomes will be skipped.
+  --last-run=<lr>     Output from last run. Only metagenomes lacking abundance data will be processed.
+                      New output combined with old output.
   --version           Show version.
   -h --help           Show this screen.
   --debug             Debug mode
@@ -90,9 +91,10 @@ sys.path.append(libDir)
 import gasicBatch.lastRunFile as lastRunFile
 import gasicBatch.MetaFile as MetaFile
 import gasicBatch.NameFile as NameFile
-from gasicBatch.ReadMapper import ReadMapper #, PairwiseMapper
+from gasicBatch.ReadMapper import ReadMapper 
 from gasicBatch.ReadSimulator import ReadSimulator
 from gasicBatch.CorrectAbundances import CorrectAbundances
+from gasicBatch.Writer import OutputWriter
 
 
 #--- Option error testing ---#
@@ -142,17 +144,21 @@ origWorkDir = os.path.abspath(os.curdir)
 
 # each metagenome (getting from certain seqDB)
 for mg in metaF.iterByRow():
-
+    
     # unpack
     mgID = mg.get_ID()
+
+    # initilize writer
+    writer = OutputWriter(mgID)
     
     # check if exists in last run, if yes: writing old entries & moving to next metagenome
     if lastRun is not None:
         df = lastRun.mgEntries([mgID])
         if df.shape[0] > 0:
-            msg =  '  Metagenome "{}" in last-run file. Writing old output; moving to next metagenome\n\n'
-            sys.stderr.write(msg.format(mgID))
-            df.to_csv(sys.stdout, sep='\t', header=None, index=None)
+            writer.lastRun(df)
+            #msg =  '  Metagenome "{}" in last-run file. Writing old output; moving to next metagenome\n\n'
+            #sys.stderr.write(msg.format(mgID))
+            #df.to_csv(sys.stdout, sep='\t', header=None, index=None)
             continue
     
     # making temp directory and chdir
@@ -166,8 +172,12 @@ for mg in metaF.iterByRow():
     mg.download()
     ## empty or no file?
     if mg.is_readFileEmpty():
-        sys.stderr.write('No read file downloaded for Metagenome {0}. Skipping metagenome\n\n'.format(mgID))
+        writer.noReadFile()
+        #sys.stderr.write('No read file downloaded for Metagenome {0}. Skipping metagenome\n\n'.format(mgID))
+        # metagenome_id, refSequences, n-mapped, corrected-abundacne, error, pval
+        #print '{mgID}\t{ref}\t{total}\t{mapped}\t{corr}\t{error}\t{pval}'.format(**outvals)
         continue
+        
     ## convert to fasta if fasta
     if mg.get_readFileFormat() == 'fastq':
         mg.to_fasta(rmFile=True)
@@ -189,10 +199,12 @@ for mg in metaF.iterByRow():
     msg = 'Determined sequencing platform for Metagenome "{}" ---> "{}"\n\n'
     sys.stderr.write(msg.format(mg.get_ID(), mg_platform)) 
     if mg_platform in args['--platform']:
-        sys.stderr.write('  The platform is in the --platform list. Skipping metagenome.\n\n')
+        #sys.stderr.write('  The platform is in the --platform list. Skipping metagenome.\n\n')
+        writer.platformUserSkip(mg_platform)
         continue
     elif mg_platform is None:
-        sys.stderr.write('  The platform could not be determined. Skipping metagenome.\n\n')
+        #sys.stderr.write('  The platform could not be determined. Skipping metagenome.\n\n')
+        writer.platformUnknown(mg_platform)
         continue
 
 
@@ -218,8 +230,9 @@ for mg in metaF.iterByRow():
     ## calling simulator using process pool
     retVal = simulator.parallel(nameF, nprocs=npar_sim, outDir=tmpdir, platform=platform, params=simParams)
     if retVal:
-        msg = '\n  WARNING: Read simulation error for metagenome "{}". Skipping metagenome.\n\n'
-        sys.stderr.write(msg.format(mgID))
+        #msg = '\n  WARNING: Read simulation error for metagenome "{}". Skipping metagenome.\n\n'
+        #sys.stderr.write(msg.format(mgID))
+        writer.simReadError()
         continue
         
     # finding out how many reads were generated
@@ -297,7 +310,8 @@ for mg in metaF.iterByRow():
             )
 
         # metagenome_id, refSequences, n-mapped, corrected-abundacne, error, pval
-        print '{mgID}\t{ref}\t{total}\t{mapped}\t{corr}\t{error}\t{pval}'.format(**outvals)
+        # print '{mgID}\t{ref}\t{total}\t{mapped}\t{corr}\t{error}\t{pval}'.format(**outvals)
+        writer.writeValues(outvals)
 
         
     # moving back to original working directory; deleting tmp directory
