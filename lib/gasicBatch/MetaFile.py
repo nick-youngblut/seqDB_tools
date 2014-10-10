@@ -315,7 +315,10 @@ class MetaFile_MGRAST_row(object):
         newFile = basename + '.fasta'
 
         # convert
-        SeqIO.convert(readFile, readFileFormat, newFile, 'fasta')
+        try:
+            SeqIO.convert(readFile, readFileFormat, newFile, 'fasta')
+        except ValueError:
+            return False
 
         # remove
         if rmFile:

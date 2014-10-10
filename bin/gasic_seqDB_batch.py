@@ -57,6 +57,7 @@ Output:
     corrected number of reads mapped
     standard error for the number of reads mapped
     P-value
+    sequencing platform of downloaded reads
 """
 
 from docopt import docopt
@@ -148,18 +149,21 @@ for mg in metaF.iterByRow():
     # unpack
     mgID = mg.get_ID()
 
-    # initilize writer
+    # initilize writer object
     writer = OutputWriter(mgID)
     
-    # check if exists in last run, if yes: writing old entries & moving to next metagenome
+    # check if exists in last run, write out prior results if no error that requires retry of pipeline
     if lastRun is not None:
-        df = lastRun.mgEntries([mgID])
-        if df.shape[0] > 0:
-            writer.lastRun(df)
-            #msg =  '  Metagenome "{}" in last-run file. Writing old output; moving to next metagenome\n\n'
-            #sys.stderr.write(msg.format(mgID))
-            #df.to_csv(sys.stdout, sep='\t', header=None, index=None)
-            continue
+        lastRunEntries = lastRun.mgEntries([mgID])
+        if lastRunEntries.shape[0] > 0:
+            lastRunErrors = set(lastRunEntries[1])
+            # retrying if no metagenome read file in last attempt
+            if('ERROR:no_metagenome_read_file' in lastRunErrors):
+                pass
+            # else: writing entries from last run and moving on
+            else:
+                writer.lastRun(lastRunEntries)
+                continue
     
     # making temp directory and chdir
     if args['--debug'] == False:
@@ -173,14 +177,13 @@ for mg in metaF.iterByRow():
     ## empty or no file?
     if mg.is_readFileEmpty():
         writer.noReadFile()
-        #sys.stderr.write('No read file downloaded for Metagenome {0}. Skipping metagenome\n\n'.format(mgID))
-        # metagenome_id, refSequences, n-mapped, corrected-abundacne, error, pval
-        #print '{mgID}\t{ref}\t{total}\t{mapped}\t{corr}\t{error}\t{pval}'.format(**outvals)
         continue
         
     ## convert to fasta if fasta
-    if mg.get_readFileFormat() == 'fastq':
-        mg.to_fasta(rmFile=True)
+    if mg.get_readFileFormat() == 'fastq':        
+        ret = mg.to_fasta(rmFile=True)
+        if not ret:
+            writer.readFileFormatConversionError()
         
     #-- determine read stats --#
     ret = mg.get_ReadStats(fileFormat='fasta')
@@ -230,8 +233,6 @@ for mg in metaF.iterByRow():
     ## calling simulator using process pool
     retVal = simulator.parallel(nameF, nprocs=npar_sim, outDir=tmpdir, platform=platform, params=simParams)
     if retVal:
-        #msg = '\n  WARNING: Read simulation error for metagenome "{}". Skipping metagenome.\n\n'
-        #sys.stderr.write(msg.format(mgID))
         writer.simReadError()
         continue
         
@@ -306,11 +307,9 @@ for mg in metaF.iterByRow():
             corr = result['corr'][i] * total,
             error = result['err'][i] * total,
             pval = result['p'][i],
-            mgID = mgID  # metagenome containing the reads used
+            mgID = mgID,    # metagenome containing the reads used
+            mg_platform = mg_platform
             )
-
-        # metagenome_id, refSequences, n-mapped, corrected-abundacne, error, pval
-        # print '{mgID}\t{ref}\t{total}\t{mapped}\t{corr}\t{error}\t{pval}'.format(**outvals)
         writer.writeValues(outvals)
 
         

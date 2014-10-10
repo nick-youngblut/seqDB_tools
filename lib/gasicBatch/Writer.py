@@ -4,9 +4,9 @@ import pandas as pd
 
 
 class OutputWriter(object):
-    """Writing output for gasic_batch"""
+    """output writing functions for gasic_batch"""
 
-    def __init__(self, metagenome_ID, nCol=7, sep='\t'):
+    def __init__(self, metagenome_ID, nCol=8, sep='\t'):
         """
         Args:
         mgID -- MGRAST metagenome ID
@@ -24,8 +24,8 @@ class OutputWriter(object):
         TODO:
         make more flexible
         """        
-        # metagenome_id, refSequences, n-mapped, corrected-abundacne, error, pval
-        print '{mgID}\t{ref}\t{total}\t{mapped}\t{corr}\t{error}\t{pval}'.format(**outvals)
+        # metagenome_id, refSequences, n-mapped, corrected-abundacne, error, pval, mg_platform
+        print '{mgID}\t{ref}\t{total}\t{mapped}\t{corr}\t{error}\t{pval}\t{mg_platform}'.format(**outvals)
         
     def lastRun(self, df):
         """If metagenome in last run output, write old output
@@ -64,5 +64,11 @@ class OutputWriter(object):
         line = [self.mgID, 'ERROR:read_simulation_error'] + ['NA'] * self.nCol
         print self.sep.join(line)
 
+    def readFileFormatConversionError(self):
+        """If error(s) during conversion of read file format (e.g. fastq to fasta)"""
+        msg = '\n  WARNING: error during read file format conversion for metagenome "{}". Skipping metagenome.\n\n'
+        sys.stderr.write(msg.format(self.mgID))
+        line = [self.mgID, 'ERROR:read_file_format_conversion_error'] + ['NA'] * self.nCol
+        print self.sep.join(line)
         
         

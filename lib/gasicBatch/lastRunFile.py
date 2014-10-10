@@ -43,4 +43,7 @@ class lastRunFile(object):
         pandas DF of rows conresponding to metagenome
         """
         return self.tbl.loc[self.tbl[0].isin(mgIDs)]
+
+
+        
         
