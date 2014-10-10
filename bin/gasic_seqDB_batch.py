@@ -4,11 +4,6 @@
 """
 gasic_seqDB_batch.py: run GASiC with multiple query metagenomes
 
-nameFile -- tab-delim table (refFile<tab>indexFile).
-            refFile = fasta of reference sequences used to make bowtie2 index
-            indexFile = read mapper index file
-metaFile -- metadata file with mg-rast or sra metagenome sequence links
-
 Usage:
   gasic_seqDB_batch.py [options] <nameFile> <metaFile> [<stages>...] 
   gasic_seqDB_batch.py -h | --help
@@ -40,16 +35,19 @@ Description:
   Selecting which (meta)genome reads are used for the GASiC pipeline is determined
   from the user-provide metaFile.
   
-  <nameFile> -- Format: 1 or 2 columns; 1st column: 'reference_fasta';
-                optional 2nd column: 'reference_index'
+  <nameFile> -- Format: 1 or 2 columns
+                * 1st column: 'reference_fasta';
+                * 2nd column [optional]: 'reference_index'
                 The index is the mapper index file (eg., bowtie2 index),
                 which is only needed if the mappers requires an index file.
+
+  <metaFile>  -- metadata file with mg-rast or sra metagenome sequence links
 
   The script provides multiple levels of parallelization (parallel call of 3rd party
   software and setting number of cores used by the software during the call).
 
 Output:
-  * table with columns:
+  Table with columns:
     metagenome_id
     reference sequence file
     total reads
@@ -89,7 +87,7 @@ sys.path.append(libDir)
 libDir = os.path.join(scriptDir, '../lib/gasic-r16/')
 sys.path.append(libDir)
 
-import gasicBatch.lastRunFile as lastRunFile
+import gasicBatch.LastRunFile as LastRunFile
 import gasicBatch.MetaFile as MetaFile
 import gasicBatch.NameFile as NameFile
 from gasicBatch.ReadMapper import ReadMapper 
@@ -124,7 +122,7 @@ minReads = int(args['--min-reads'])
 #-- reading files --#
 # reading lastRun file (if available)
 if args['--last-run']:
-    lastRun = lastRunFile.lastRunFile(args['--last-run'])
+    lastRun = LastRunFile.LastRunFile(args['--last-run'])
 else:
     lastRun = None
 

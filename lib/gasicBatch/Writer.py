@@ -4,7 +4,7 @@ import pandas as pd
 
 
 class OutputWriter(object):
-    """output writing functions for gasic_batch"""
+    """Writing functions for gasic batch"""
 
     def __init__(self, metagenome_ID, nCol=8, sep='\t'):
         """

@@ -15,18 +15,27 @@ class ReadSimulator(object):
     
     @staticmethod
     def getSimulator(simulator):
-        """Factor method for selecting simulator class"""
+        """Factory method for selecting simulator class
+        Args:
+        simulator -- name of simulator to use
+
+        Supported simulators:
+        mason
+        """
         
-        simulators = dict(mason=mason, griner=grinder)
+        simulators = dict(mason=mason) #, griner=grinder)
 
         simulator = simulator.lower()
         if simulator in simulators:
             return simulators[simulator]()
         else:
-            raise TypeError('Simulator: "{0}" not supported\n'.format(simulator))
+            raise TypeError('Simulator: "{0}" is not yet supported\n'.format(simulator))
 
     def exeExists(self, exe):
-        """checking to see if executable is in path"""
+        """checking to see if executable is in path
+        Args:
+        exe -- name of executable
+        """
         if find_executable(exe):
             return 1
         else:
@@ -36,9 +45,11 @@ class ReadSimulator(object):
 class grinder(ReadSimulator):
     """Class for calling Grinder simulator"""
 
+    # TODO
+    
     def run_simulator(refFile, outFile=None, params=''):
         """Calling grinder simulator"""
-        print 'TODO'
+        print 'Not yet supported!'
         pass
 
 
@@ -46,6 +57,10 @@ class mason(ReadSimulator):
     """Class for calling mason simulator"""
 
     def __init__(self, executable='mason'):
+        """
+        Args:
+        executable -- name of executable
+        """
         # in PATH?
         self.exeExists(executable)
         # attr
@@ -53,7 +68,7 @@ class mason(ReadSimulator):
 
 
     def get_paramsByReadStats(self, mg, params=dict()):
-        """Getting simulator params based on read stats (e.g., read lengths &
+        """Getting simulator params based on read stats (e.g. read lengths &
         sequencing platform.
         For illumina: read-length = median of actual read lengths
         For 454: read mean and error determined from actual read lengths
@@ -93,7 +108,19 @@ class mason(ReadSimulator):
 
         Default keyword params for mason (override any of them with params):
 
-        ADD PARAMS HERE
+        defaultParams = {'illumina' : {
+            '--num-reads' : 10000,
+            '--haplotype-indel-rate' : 0,
+            '--haplotype-snp-rate' : 0,
+            '--read-length' : 100 },
+            '454' : {
+            '--num-reads' : 10000,
+            '--haplotype-indel-rate' : 0,
+            '--haplotype-snp-rate' : 0 },
+            'sanger' : {
+            '--num-reads' : 10000,
+            '--haplotype-indel-rate' : 0,
+            '--haplotype-snp-rate' : 0 }}
         
         Args:
         refFile -- fasta file using for generating reads
@@ -186,6 +213,7 @@ class mason(ReadSimulator):
 
         Args:
         names -- NameFile class with iter_names() method
+        fileType -- sequence file format
         nprocs -- max number of parallel simulation calls
         kwargs -- passed to simulator
 
@@ -195,7 +223,7 @@ class mason(ReadSimulator):
         simReadsFileCount -- number of simulated reads
 
         Return:
-        boolean of run success/fail
+        boolean on run success/fail
         """
         # making list of fasta file to provide simulator call
         fastaFiles = [name.get_fastaFile() for name in names.iter_names()]

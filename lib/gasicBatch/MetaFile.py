@@ -13,8 +13,7 @@ import pandas as pd
 
 
 class MetaFile(object):
-    """metadata table file object class
-    """
+    """metadata table file object class"""
     
     def __init__(self, fileName=None, fileObject=None, 
                  stages=None, **pandas_kwargs):
@@ -51,7 +50,12 @@ class MetaFile(object):
             
     @classmethod
     def gunzip(cls, inFile, outFile=None):
-        """gunzip of a provided file"""
+        """gunzip of a provided file
+        Args:
+        inFile -- file name
+        Kwargs:
+        outFile -- output file name
+        """
         if outFile is None:
             outFile, ext = os.path.splitext(inFile)
         print outFile
@@ -69,6 +73,14 @@ class MetaFile_MGRAST(MetaFile):
 
     def __init__(self, fileName=None, fileObject=None, 
                  stages=[150, 100], **pandas_kwargs):
+        """init
+        Args:
+        fileName -- fileName (or provide fileOject)
+        fileObject -- fileObject (or provide fileName)
+        stages -- stages in mg-rast pipeline that will be sequentially checking for an existing file
+        Kwargs:
+        pandas_kwargs -- passed to pandas read_csv function
+        """
         MetaFile.__init__(self, fileName=fileName, fileObject=fileObject, 
                           stages=stages, **pandas_kwargs)
         self.checkFile()
@@ -114,9 +126,10 @@ class MetaFile_MGRAST_row(object):
 
     def __init__(self, row, stages, rowIndex=None):
         """
-        Attribs:
+        Args:
         row -- pandas dataframe row
         stages -- list of MGRAST processing stages
+        rowIndex -- row's index in metafile table (pandas dataframe)
         """
         if type(row) is not pd.core.series.Series:
             raise TypeError('row must be pd.core.series.Series\n')
@@ -168,6 +181,9 @@ class MetaFile_MGRAST_row(object):
         Attrib edit:
         readFile -- string with downloaded file name
         readFileFormat -- sequence file format
+
+        Return:
+        boolean of success/failure
         """        
 
         # input check
@@ -283,7 +299,8 @@ class MetaFile_MGRAST_row(object):
         """Determine whether read file is empty.
 
         Return:
-        True if empty or no read file"""
+        True if empty or no read file
+        """
         if self.get_readFile() is None:
             return True
         elif os.stat(self.get_readFile())[6] == 6:
@@ -337,6 +354,7 @@ class MetaFile_MGRAST_row(object):
         
         Args:
         readFile -- if None using self.readFile
+        fileFormat -- format of the sequence file
 
         Output:
         readStats attribute -- dict of stats (eg., 'mean' : mean_value); returns None if no fileName provided
