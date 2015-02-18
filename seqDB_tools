@@ -1,0 +1,68 @@
+#!/usr/bin/env python
+
+#--- Option parsing ---#
+"""
+seqDB_tools: commands for interacting with public sequence databases
+
+Usage:
+  seqDB_tools [options] <command> [<args>...]
+  seqDB_tools -h | --help
+  seqDB_tools --version
+
+Options:
+  -p --perldoc  Get perldoc of command.
+  -h --help     Show this screen.
+  --version     Show version.
+
+Commands:
+  accession2genbankInfo
+  accession-GI2fasta
+  ENA_sample_xmlParse
+  entrez_get
+  gasic_seqDB_batch
+  get_RAST_jobs
+  GI2taxonomy
+  md5sum2accession
+  MGRAST_blast2md5
+  MGRAST_download
+  MGRAST_getMIXS
+  MGRAST_mapper
+  MGRAST_md5_chimerism
+  NCBIprokaryoteTableFilter
+  RAST_batch_submit_job
+  RAST_tblFromTarBall
+  SRA_mapper
+  SRAmetadb_add_efetch_res
+  SRAmetadb_add_ENA_fastq_files
+  SRAmetadb_edit_lat_long
+
+Description:
+  This is the main command to call various scripts associated with this project.
+"""
+
+import os, sys
+from docopt import docopt
+from subprocess import call
+
+scriptDir = os.path.dirname(__file__)
+subcmdDir = os.path.join(scriptDir, 'bin')
+
+if __name__ == '__main__':
+    args = docopt(__doc__,
+                  version='0.1',
+                  options_first=True)
+
+
+    # subcommand script
+    exts = ['.pl', '.py', '.r']
+    scriptFiles = [os.path.join(subcmdDir, args['<command>'] + ext) for ext in exts]
+    scriptFiles = filter(os.path.isfile, scriptFiles)
+    if len(scriptFiles) < 1:
+        exit('"{}" is not a valid command. See "seqDB_tools -h".'.format(args['<command>']))
+
+    
+    # calling subcommand script
+    cmd = [scriptFiles[0]] + args['<args>']
+    if args['--perldoc']:
+        cmd = ['perldoc'] + cmd    
+    exit(call(cmd))
