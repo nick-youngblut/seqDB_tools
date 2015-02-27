@@ -34,6 +34,7 @@ prokaryotes.txt file from NCBI genome ftp site. ('-' = STDIN)
 
 Write out fasta files for each organism? [FALSE]
 
+
 =item -d[irectory] <directory>
 
 Directory to write out all fastas (only needed with '-w').
@@ -44,6 +45,18 @@ Default: directory.default
 directory.type: writable
 directory.default: 'genomes'
 
+
+=item -a[ttempts] <attempts>
+
+Number of attempts at trying download a genome.
+
+Default: attempts.default
+
+=for Euclid:
+attempts.type: int >= 1
+attempts.default: 5
+
+
 =item -t[hreads] <threads>
 
 Number of threads to run jobs in parallel.
@@ -53,6 +66,7 @@ Default: threads.default
 =for Euclid:
 threads.type: int >= 0
 threads.default: 1
+
 
 =item --debug [<log_level>]
 
@@ -141,10 +155,29 @@ if($ARGV{'-write_fastas'}){
   
   # forking & writing
   my $pm = Parallel::ForkManager->new($ARGV{-threads});
+  my $tries = 0;
   foreach my $org (keys %$tbl_r){
     $pm->start and next;
-    # get fastas & write
-    write_fasta_from_accession($org, $tbl_r->{$org}, $outdir);
+    while (1){
+      $tries++;
+
+      # get fastas & write
+      my $ret = write_fasta_from_accession($org, $tbl_r->{$org}, $outdir);	
+
+      # success/fail
+      if ($ret == 0){
+	warn "Successful download: $org\n";
+	last;
+      }
+      elsif ($tries >= $ARGV{'-attempts'}){
+	warn "Exceeded tries to download: $org\n";
+	last;
+      }
+      else{
+	warn "Failed download (retrying): $org\n";
+	next;
+      }
+    }
     $pm->finish;
   }
   $pm->wait_all_children;
@@ -187,7 +220,7 @@ sub write_fasta_from_accession{
   use Bio::DB::GenBank;
 
   my ($org, $acc_r, $dir) = @_;
-  print STDERR "Processing $org\n";
+  print STDERR "Downloading $org\n";
   
   if($$acc_r[0] eq '-'){
     warn "'$org' does not have an accession. Skipping\n";
@@ -199,8 +232,13 @@ sub write_fasta_from_accession{
   $org =~ s/[. \/()=+\[\]:]+/_/g;
   $org =~ s/_$//;
 
+  # making sure genome file starts empty
+  open OUT, ">$dir/$org.fasta" or die $!;
+  close OUT;
+  
   # getting fasta and writing 
   my $gb = new Bio::DB::GenBank;
+  my $ret_val = 0;
   foreach my $acc (@$acc_r){
     my $seqio = $gb->get_Stream_by_id( [$acc] );
     my $seq_out = Bio::SeqIO->new( -file => ">>$dir/$org.fasta", -format => 'fasta');
@@ -211,10 +249,12 @@ sub write_fasta_from_accession{
       }
       else{
 	warn $seq->id, "has no sequence. Skipping!\n";
+	$ret_val = 1;
 	next;
       }
     }
   }
+  return $ret_val;
 }
 
 sub load_table_accession{
