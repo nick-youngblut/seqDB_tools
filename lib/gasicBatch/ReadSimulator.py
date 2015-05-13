@@ -15,18 +15,27 @@ class ReadSimulator(object):
     
     @staticmethod
     def getSimulator(simulator):
-        """Factor method for selecting simulator class"""
+        """Factory method for selecting simulator class
+        Args:
+        simulator -- name of simulator to use
+
+        Supported simulators:
+        mason
+        """
         
-        simulators = dict(mason=mason, griner=grinder)
+        simulators = dict(mason=mason) #, griner=grinder)
 
         simulator = simulator.lower()
         if simulator in simulators:
             return simulators[simulator]()
         else:
-            raise TypeError('Simulator: "{0}" not supported\n'.format(simulator))
+            raise TypeError('Simulator: "{0}" is not yet supported\n'.format(simulator))
 
     def exeExists(self, exe):
-        """checking to see if executable is in path"""
+        """checking to see if executable is in path
+        Args:
+        exe -- name of executable
+        """
         if find_executable(exe):
             return 1
         else:
@@ -36,9 +45,11 @@ class ReadSimulator(object):
 class grinder(ReadSimulator):
     """Class for calling Grinder simulator"""
 
+    # TODO
+    
     def run_simulator(refFile, outFile=None, params=''):
         """Calling grinder simulator"""
-        print 'TODO'
+        print 'Not yet supported!'
         pass
 
 
@@ -46,6 +57,10 @@ class mason(ReadSimulator):
     """Class for calling mason simulator"""
 
     def __init__(self, executable='mason'):
+        """
+        Args:
+        executable -- name of executable
+        """
         # in PATH?
         self.exeExists(executable)
         # attr
@@ -53,12 +68,18 @@ class mason(ReadSimulator):
 
 
     def get_paramsByReadStats(self, mg, params=dict()):
-        """Getting simulator params based on read stats (e.g., read lengths &
-        sequencing platform
+        """Getting simulator params based on read stats (e.g. read lengths &
+        sequencing platform.
+        For illumina: read-length = median of actual read lengths
+        For 454: read mean and error determined from actual read lengths
 
         Args:
         mg -- MetaFile row class
         params -- dict that sets initial params
+
+        Return:
+        platform -- string
+        params -- dict; {param : value}
         """
         # params for platform
         platform = None
@@ -82,12 +103,24 @@ class mason(ReadSimulator):
             
 
     def __call__(self, refFile, outFile=None, outDir=None,
-                      platform='illumina', params=None):
+                      platform='illumina', params=None, tries=5):
         """Calling mason; default for creating illumina reads
 
         Default keyword params for mason (override any of them with params):
 
-        ADD PARAMS HERE
+        defaultParams = {'illumina' : {
+            '--num-reads' : 10000,
+            '--haplotype-indel-rate' : 0,
+            '--haplotype-snp-rate' : 0,
+            '--read-length' : 100 },
+            '454' : {
+            '--num-reads' : 10000,
+            '--haplotype-indel-rate' : 0,
+            '--haplotype-snp-rate' : 0 },
+            'sanger' : {
+            '--num-reads' : 10000,
+            '--haplotype-indel-rate' : 0,
+            '--haplotype-snp-rate' : 0 }}
         
         Args:
         refFile -- fasta file using for generating reads
@@ -96,6 +129,7 @@ class mason(ReadSimulator):
         platform -- sequencing platform
         params -- parameters passed to mason. {param : value}
                   value = '' if param is boolean
+        tries -- number of tries to call mason before giving up due to it dying 
         
         Return:
         string with file name written by mason
@@ -117,8 +151,6 @@ class mason(ReadSimulator):
             '--haplotype-indel-rate' : 0,
             '--haplotype-snp-rate' : 0 }}
         ## changing defaults
-        #for k,v in defaultParams.items():
-        #    if params.has_key(k):
         defaultParams[platform].update(params)
 
         
@@ -146,15 +178,34 @@ class mason(ReadSimulator):
         cmdParams = ' '.join(['{} {}'.format(k,v) for k,v in defaultParams[platform].items()])
                     
         # calling
+        ## cmd
         cmd = 'mason {platform} {params} -o {outFile} {refFile} > {logFile}'
         cmd = cmd.format(platform=platform, params=cmdParams, refFile=refFile, outFile=outFile, logFile=logFile)
-        
-        sys.stderr.write("Executing: {0}\n".format(cmd))
-        os.system(cmd)
 
+        ## calling with number of tries
+        for i in range(tries):
+            sys.stderr.write("Executing: {0}\n".format(cmd))
+            retVal = os.system(cmd)
+            if retVal:
+                msg = ' ERROR: mason call returned non-zero value.'
+                if i >= tries:
+                    msg = msg + ' Maxed out on tries: {}. Giving up.\n'.format(tries)
+                    sys.stderr.write(msg)                
+                    break
+                else:
+                    msg = msg + ' Attempting try {}\n'.format(i + 2)
+                    sys.stderr.write(msg)
+                    continue
+            else:
+                msg = ' mason call succeeded on try {}\n'.format(i + 1)
+                sys.stderr.write(msg)
+                break
 
-        # return 
-        return dict(simReadsFile=outFile, simReadsFileType=fileType)
+        # return
+        if retVal:
+            return dict(simReadsFile=None, simReadsFileType=None)
+        else:
+            return dict(simReadsFile=outFile, simReadsFileType=fileType)
 
         
     def parallel(self, names, fileType='fasta', nprocs=1, **kwargs):
@@ -162,6 +213,7 @@ class mason(ReadSimulator):
 
         Args:
         names -- NameFile class with iter_names() method
+        fileType -- sequence file format
         nprocs -- max number of parallel simulation calls
         kwargs -- passed to simulator
 
@@ -171,7 +223,7 @@ class mason(ReadSimulator):
         simReadsFileCount -- number of simulated reads
 
         Return:
-        boolean of run success/fail
+        boolean on run success/fail
         """
         # making list of fasta file to provide simulator call
         fastaFiles = [name.get_fastaFile() for name in names.iter_names()]
@@ -182,12 +234,12 @@ class mason(ReadSimulator):
         # calling simulator
         res = parmap.map(new_simulator, fastaFiles, processes=nprocs)
 
-        # checking that simulated reads were created for all references
+        # checking that simulated reads were created for all references; return 1 if no file
         for row in res:
-            if not os.path.isfile(row['simReadsFile']):
-                return False
-            elif os.stat(row['simReadsFile'])[0] == 0:
-                return False
+            if row['simReadsFile'] is None or not os.path.isfile(row['simReadsFile']):
+                return 1
+            elif os.stat(row['simReadsFile'])[0] == 0:  # file size = 0
+                return 1
         
         # converting reads to fasta if needed
         if fileType.lower() == 'fasta':
@@ -212,4 +264,4 @@ class mason(ReadSimulator):
             num_reads = len([True for i in SeqIO.parse(simReadsFile, fileType)])
             name.set_simReadsCount(num_reads)
             
-        return True
+        return 0

@@ -11,11 +11,18 @@ class NameFile(object):
     """
 
     def __init__(self, nameFile):
+        """init
+        Args:
+        nameFile -- name of nameFile (string)
+        """
         self.read_nameFile(nameFile)
 
 
     def read_nameFile(self, nameFile):
-        """Reading in nameFile"""
+        """Reading in nameFile
+        Args:
+        nameFile -- name of nameFile        
+        """
         with open(nameFile, 'rb') as fh:
             self.names = []
             lineCount = 0
@@ -35,7 +42,7 @@ class NameFile(object):
     def iter_names(self):
         """Interate through all names
         
-        Output:
+        Return:
         Object of Names class
         """
         for Name in self.names:
@@ -60,6 +67,10 @@ class NameFile(object):
 
 
     def get_name(self, i):
+        """
+        Args:
+        i -- index in names list
+        """
         return self.names[i]
 
     def get_names(self):
@@ -74,6 +85,12 @@ class Name(object):
     """Class for individual reference file metadata"""
 
     def __init__(self, fastaFile, indexFile, rowIndex):
+        """init
+        Args:
+        fastaFile -- fastaFile name
+        indexFile -- indexFile name
+        rowIndex -- rowIndex (depreciated?)
+        """
         self.fastaFile = fastaFile
         self.indexFile = indexFile
         self.rowIndex = rowIndex

@@ -4,13 +4,17 @@ import os
 import sys
 import pandas as pd
 
-class lastRunFile(object):
+class LastRunFile(object):
     """lastRunFile: tab-delimited output (no header)
     produced by gasic batch script"""
 
-    def __init__(self, inFile):
-        self.fileName = inFile            
-        self.tbl = pd.read_csv(inFile, sep='\t', header=None)
+    def __init__(self, lastRunFile):
+        """
+        Args:
+        lastRunFile -- lastRunFile name
+        """
+        self.fileName = lastRunFile        
+        self.tbl = pd.read_csv(lastRunFile, sep='\t', header=None)
 
     def mgID_iter(self):
         """Iterator for all metagenome ID in table"""
@@ -43,4 +47,7 @@ class lastRunFile(object):
         pandas DF of rows conresponding to metagenome
         """
         return self.tbl.loc[self.tbl[0].isin(mgIDs)]
+
+
+        
         

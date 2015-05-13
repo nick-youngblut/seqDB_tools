@@ -4,11 +4,6 @@
 """
 gasic_seqDB_batch.py: run GASiC with multiple query metagenomes
 
-nameFile -- tab-delim table (refFile<tab>indexFile).
-            refFile = fasta of reference sequences used to make bowtie2 index
-            indexFile = read mapper index file
-metaFile -- metadata file with mg-rast or sra metagenome sequence links
-
 Usage:
   gasic_seqDB_batch.py [options] <nameFile> <metaFile> [<stages>...] 
   gasic_seqDB_batch.py -h | --help
@@ -24,10 +19,12 @@ Options:
   --npar-map=<nm>     Number of parallel read mapping calls. [default: 1]  
   --npar-sim=<ns>     Number of parallel read simulations. [default: 1]
   --ncores-3rd=<nt>   Number of cores used by 3rd party software. [default: 1]
+  --npar-boot=<pb>    Number of parallel bootstrap iteractions. [default: 1]
   --nbootstrap=<nb>   Number of bootstrap iterations. [default: 100]
   --nreads-sim=<ns>   Number of reads to simulate per reference. [default: 10000]
   --min-reads=<mr>    Minimum reads that a metagenome must contain. [default: 1000]
-  --last-run=<lr>     Output from last run. Listed metagenomes will be skipped. 
+  --last-run=<lr>     Output from last run. Only metagenomes lacking abundance data will be processed.
+                      New output combined with old output.
   --version           Show version.
   -h --help           Show this screen.
   --debug             Debug mode
@@ -38,16 +35,19 @@ Description:
   Selecting which (meta)genome reads are used for the GASiC pipeline is determined
   from the user-provide metaFile.
   
-  <nameFile> -- Format: 1 or 2 columns; 1st column: 'reference_fasta';
-                optional 2nd column: 'reference_index'
+  <nameFile> -- Format: 1 or 2 columns
+                * 1st column: 'reference_fasta';
+                * 2nd column [optional]: 'reference_index'
                 The index is the mapper index file (eg., bowtie2 index),
                 which is only needed if the mappers requires an index file.
+
+  <metaFile>  -- metadata file with mg-rast or sra metagenome sequence links
 
   The script provides multiple levels of parallelization (parallel call of 3rd party
   software and setting number of cores used by the software during the call).
 
 Output:
-  * table with columns:
+  Table with columns:
     metagenome_id
     reference sequence file
     total reads
@@ -55,6 +55,7 @@ Output:
     corrected number of reads mapped
     standard error for the number of reads mapped
     P-value
+    sequencing platform of downloaded reads
 """
 
 from docopt import docopt
@@ -86,12 +87,13 @@ sys.path.append(libDir)
 libDir = os.path.join(scriptDir, '../lib/gasic-r16/')
 sys.path.append(libDir)
 
-import gasicBatch.lastRunFile as lastRunFile
+import gasicBatch.LastRunFile as LastRunFile
 import gasicBatch.MetaFile as MetaFile
 import gasicBatch.NameFile as NameFile
-from gasicBatch.ReadMapper import ReadMapper #, PairwiseMapper
+from gasicBatch.ReadMapper import ReadMapper 
 from gasicBatch.ReadSimulator import ReadSimulator
 from gasicBatch.CorrectAbundances import CorrectAbundances
+from gasicBatch.Writer import OutputWriter
 
 
 #--- Option error testing ---#
@@ -112,13 +114,15 @@ npar_map = int(args['--npar-map'])
 npar_sim = int(args['--npar-sim'])
 ncores_3rd = int(args['--ncores-3rd'])
 nBootstrap = int(args['--nbootstrap'])
+npar_boot = int(args['--npar-boot'])
 nSimReads = int(args['--nreads-sim'])
 minReads = int(args['--min-reads'])
+
 
 #-- reading files --#
 # reading lastRun file (if available)
 if args['--last-run']:
-    lastRun = lastRunFile.lastRunFile(args['--last-run'])
+    lastRun = LastRunFile.LastRunFile(args['--last-run'])
 else:
     lastRun = None
 
@@ -139,18 +143,25 @@ origWorkDir = os.path.abspath(os.curdir)
 
 # each metagenome (getting from certain seqDB)
 for mg in metaF.iterByRow():
-
+    
     # unpack
     mgID = mg.get_ID()
+
+    # initilize writer object
+    writer = OutputWriter(mgID)
     
-    # check if exists in last run, if yes: writing old entries & moving to next metagenome
+    # check if exists in last run, write out prior results if no error that requires retry of pipeline
     if lastRun is not None:
-        df = lastRun.mgEntries([mgID])
-        if df.shape[0] > 0:
-            msg =  ' Metagenome "{}" in last-run file. Writing old output; moving to next metagenome\n\n'
-            sys.stderr.write(msg.format(mgID))
-            df.to_csv(sys.stdout, sep='\t', header=None, index=None)
-            continue
+        lastRunEntries = lastRun.mgEntries([mgID])
+        if lastRunEntries.shape[0] > 0:
+            lastRunErrors = set(lastRunEntries[1])
+            # retrying if no metagenome read file in last attempt
+            if('ERROR:no_metagenome_read_file' in lastRunErrors):
+                pass
+            # else: writing entries from last run and moving on
+            else:
+                writer.lastRun(lastRunEntries)
+                continue
     
     # making temp directory and chdir
     if args['--debug'] == False:
@@ -164,11 +175,14 @@ for mg in metaF.iterByRow():
     mg.download()
     ## empty or no file?
     if mg.is_readFileEmpty():
-        sys.stderr.write('No read file downloaded for Metagenome {0}. Skipping metagenome\n\n'.format(mgID))
+        writer.noReadFile()
         continue
+        
     ## convert to fasta if fasta
-    if mg.get_readFileFormat() == 'fastq':
-        mg.to_fasta(rmFile=True)
+    if mg.get_readFileFormat() == 'fastq':        
+        ret = mg.to_fasta(rmFile=True)
+        if not ret:
+            writer.readFileFormatConversionError()
         
 
     #-- determine read stats --#
@@ -188,10 +202,12 @@ for mg in metaF.iterByRow():
     msg = 'Determined sequencing platform for Metagenome "{}" ---> "{}"\n\n'
     sys.stderr.write(msg.format(mg.get_ID(), mg_platform)) 
     if mg_platform in args['--platform']:
-        sys.stderr.write('  The platform is in the --platform list. Skipping metagenome.\n\n')
+        #sys.stderr.write('  The platform is in the --platform list. Skipping metagenome.\n\n')
+        writer.platformUserSkip(mg_platform)
         continue
     elif mg_platform is None:
-        sys.stderr.write('  The platform could not be determined. Skipping metagenome.\n\n')
+        #sys.stderr.write('  The platform could not be determined. Skipping metagenome.\n\n')
+        writer.platformUnknown(mg_platform)
         continue
 
     # debug download & read stats
@@ -214,10 +230,9 @@ for mg in metaF.iterByRow():
     platform, simParams = simulator.get_paramsByReadStats(mg, params={'--num-reads':nSimReads})
     
     ## calling simulator using process pool
-    ret = simulator.parallel(nameF, nprocs=npar_sim, outDir=tmpdir, platform=platform, params=simParams)
-    if not ret:
-        msg = '\n  WARNING: Read simulation error for metagenome "{}". Skipping metagenome.\n\n'
-        sys.stderr.write(msg.format(mgID))
+    retVal = simulator.parallel(nameF, nprocs=npar_sim, outDir=tmpdir, platform=platform, params=simParams)
+    if retVal:
+        writer.simReadError()
         continue
         
     # finding out how many reads were generated
@@ -278,7 +293,7 @@ for mg in metaF.iterByRow():
     ## will bootstrap similarity matrix based on 'nBootstrap'
     refSamFiles = [name.get_refSamFile() for name in nameF.iter_names()]
     CorAbund = CorrectAbundances()            # create instance
-    result = CorAbund.similarityCorrection(refSamFiles, matrixOutFile, nBootstrap)
+    result = CorAbund.similarityCorrection(refSamFiles, matrixOutFile, nBootstrap, npar_boot)
 
     
     #-- writing output --#
@@ -291,17 +306,18 @@ for mg in metaF.iterByRow():
             corr = result['corr'][i] * total,
             error = result['err'][i] * total,
             pval = result['p'][i],
-            mgID = mgID  # metagenome containing the reads used
+            mgID = mgID,    # metagenome containing the reads used
+            mg_platform = mg_platform
             )
-
-        # metagenome_id, refSequences, n-mapped, corrected-abundacne, error, pval
-        print '{mgID}\t{ref}\t{total}\t{mapped}\t{corr}\t{error}\t{pval}'.format(**outvals)
+        writer.writeValues(outvals)
 
         
-    # moving back to original working directory
+    # moving back to original working directory; deleting tmp directory
     if args['--debug'] == False:
+        tmpdir = os.path.abspath(os.curdir)
         os.chdir(origWorkDir)
+        try:
+            shutil.rmtree(tmpdir)
+        except OSError:
+            sys.stderr.write(' WARNING: could not delete temporary directory: {}\n'.format(tmpdir))
         
-
-    # debug
-    #sys.exit()

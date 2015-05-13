@@ -9,54 +9,61 @@ from core import tools
 
 
 class CorrectAbundances(object):
-
-
+    
     @staticmethod
-    def similarityCorrection(samFiles, smatFile, nBootstrap):
+    def similarityCorrection(samFiles, smatFile, nBootstrap, npar_boot):
         """
         Perform similarity correction step. The similarity matrix and mapping
         results must be available.
         
         Args:
-        samFiles -- list of SAM files (query reads mapped to each reference)
-	smatFile -- mapping information for similarity matrix with same ordering as simSamFile list
-	nBootstrap -- number of bootstrap samples, use 1 to disable bootstrapping
+        samFiles -- list of SAM files (query reads mapped to each reference).
+        smatFile -- mapping information for similarity matrix with same ordering as simSamFile list.
+        nBootstrap -- number of bootstrap samples, use 1 to disable bootstrapping.
+        npar_boot -- number of bootstrap samples to processes in parallel.
+        
+        OUTPUT:
+        total:             total number of reads in the dataset
+        num_reads:         number of reads mapped to each genome (array)
+        corr:              abundance of each genome after similarity correction
+        err:               estimated standard error
+        p:                 p-value for the confidence, that the true abundance is above some threshold
+        """
 
-	OUTPUT:
-	total:             total number of reads in the dataset
-	num_reads:         number of reads mapped to each genome (array)
-	corr:              abundance of each genome after similarity correction
-	err:               estimated standard error
-	p:                 p-value for the confidence, that the true abundance is above some threshold
-	"""
-
-	# find out the total number of reads for first sam file
+        # find out the total number of reads for first sam file
         total = len( [1 for read in pysam.Samfile(samFiles[0], "r")] )
-	sys.stderr.write("...found {} reads\n".format(total))
-
-	# initialize some arrays
-	#   mapping information; mapped[i,j]=1 if read j was successfully mapped to i.
-	mapped = np.zeros( (len(samFiles), total) )
-
-	# total number of successfully mapped reads per reference
-	num_reads = np.zeros( (len(samFiles),) )
-
-	# analyze the SAM files
-	for n_ind,samFile in enumerate(samFiles):
+        sys.stderr.write("...found {} reads\n".format(total))
+        
+        # initialize some arrays
+        #   mapping information; mapped[i,j]=1 if read j was successfully mapped to i.
+        mapped = np.zeros( (len(samFiles), total) )
+        
+        # total number of successfully mapped reads per reference
+        num_reads = np.zeros( (len(samFiles),) )
+        
+        # analyze the SAM files
+        for n_ind,samFile in enumerate(samFiles):
             sys.stderr.write("...analyzing SAM-File {} of {}\n".format(n_ind+1, len(samFiles)))
             # samfile filename
             sf = pysam.Samfile(samFile, "r")
-
+            
             # go through reads in samfile and check if it was successfully mapped
             mapped[n_ind,:] = np.array([int(not rd.is_unmapped) for rd in sf])
             num_reads[n_ind] = sum(mapped[n_ind,:])
-
-	# run similarity correction step
+            
+        # run similarity correction step
         smat = np.load(smatFile)
-	p,corr,var = gasic.bootstrap(mapped, smat, nBootstrap)
-	err = np.sqrt(var)
-	return dict(total=total,num_reads=num_reads,corr=corr,err=err,p=p)
+        
+        if total <= 1000000:   # only multi-core for smaller datasets; bug with large datasets
+            p,corr,var = gasic.bootstrap_par(mapped, smat, nBootstrap, nprocs=npar_boot)
+        else: 
+            msg = ' WARNING: number of reads ({}) is > 1 million. Not using multiple cores\n'
+            sys.stderr.write(msg.format(num_reads))
+            p,corr,var = gasic.bootstrap(mapped, smat, nBootstrap)
 
+        err = np.sqrt(var)
+        return dict(total=total,num_reads=num_reads,corr=corr,err=err,p=p)
+            
 
 
     @staticmethod
@@ -108,12 +115,20 @@ class CorrAbundRes(object):
         for n_ind,samFile in enumerate(samFiles):
             # Name, mapped reads, corrected reads, estimated error, p-value
             out = "{name}\t{total}\t{mapped}\t{corr}\t{error}\t{pval}\n"
-            outfh.write(out.format(name=nm,total=total,mapped=num_reads[n_ind],corr=corr[n_ind]*total,error=err[n_ind]*total,pval=p[n_ind]))
+            outfh.write(out.format(name=nm,
+                                   total=total,
+                                   mapped=num_reads[n_ind],
+                                   corr=corr[n_ind]*total,
+                                   error=err[n_ind]*total,
+                                   pval=p[n_ind]))
             outfh.close()
             print "...wrote results to {}".format(outFileName)
     
         
 
+
+
+            
 #--- main ---#    
     # numArgs = len(args)
     # if numArgs == 1:

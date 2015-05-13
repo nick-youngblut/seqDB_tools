@@ -29,6 +29,7 @@ import sys
 import numpy as np
 import numpy.linalg as la
 import scipy.optimize as opt
+import parmap
 
 
 def similarity_correction(sim, reads, N):
@@ -144,11 +145,17 @@ def bootstrap(reads, smat_raw, B, test_c=0.01):
     """
     Similarity correction using a bootstrapping procedure for more robust corrections and error
     estimates.
-    reads:      [numpy.array (M,N)] array with mapping information; reads[m,n]==1, if read n mapped to
-                species m.
-    smat_raw:   mapping information for similarity matrix. species have same ordering as reads array
-    B:          Number of bootstrap samples
-    test_c:     For testing: treat species as not present, if estimated concentration is below test_c.
+
+    Args:
+    reads -- [numpy.array (M,N)] array with mapping information; reads[m,n]==1,
+              if read n mapped to species m.
+    smat_raw -- mapping information for similarity matrix. species have same ordering as reads array
+    B -- Number of bootstrap samples
+    test_c -- For testing: treat species as not present, if estimated concentration is below test_c.
+    
+    Return:
+    [p_values, abundances, variances] -- list of floats
+    
     """
     # M: Number of species, N: Number of reads
     M,N = reads.shape 
@@ -181,3 +188,69 @@ def bootstrap(reads, smat_raw, B, test_c=0.01):
     abundances = np.mean(corr, axis=0)
     variances = np.var(corr, axis=0)
     return p_values, abundances, variances
+
+
+
+def _boot_iteration(b, reads, smat_raw, test_c, B, M, N):
+    """One bootstrap iteration for bootstrap_par function.
+    See bootstrap_par for arg doc."""    
+    sys.stderr.write("...bootstrapping {} of {}\n".format(b+1,B))
+
+    # arrays for results
+    res = {'found' : np.zeros( (1,M) ),
+           'corr' : np.zeros( (1,M) ),
+           'fails' : np.zeros( (1,M) )}
+    
+    # select a bootstrap sample 
+    random_set = np.random.randint(N,size=N)
+    
+    # count the number of matching reads in bootstrap sample
+    res['found'][0,:] = np.sum(reads[:,random_set], axis=1)
+
+    # bootstrap a similarity matrix
+    smat = bootstrap_similarity_matrix(smat_raw)
+    
+    # calculate abundances
+    res['corr'][0,:] = similarity_correction(smat,res['found'][0,:],N)
+    
+    # check if the calculated abundance is below the test abundance
+    res['fails'][0,:] = res['corr'][0,:] < test_c
+    
+    # return
+    return res
+
+
+def bootstrap_par(reads, smat_raw, B, test_c=0.01, nprocs=1):
+    """
+    Similarity correction using a bootstrapping procedure for more robust corrections and error
+    estimates. Bootstrapping conducted in parallel.
+
+    Args:
+    reads -- [numpy.array (M,N)] array with mapping information; reads[m,n]==1,
+             if read n mapped to species m.
+    smat_raw -- mapping information for similarity matrix. species have same ordering as reads array
+    B -- Number of bootstrap samples
+    test_c -- For testing: treat species as not present, if estimated concentration is below test_c.
+    nprocs -- Number of parallel bootstrap processes to perform.
+
+    Return:
+    [p_values, abundances, variances] -- list of floats
+    
+    """
+    # M: Number of species, N: Number of reads
+    M,N = reads.shape 
+
+    resList = parmap.map(_boot_iteration, range(B), reads, smat_raw, test_c, B, M, N, processes=nprocs)
+
+    # merging arrays (found, core, fails)
+    found = np.concatenate( [x['found'] for x in resList] )
+    corr = np.concatenate( [x['corr'] for x in resList] )
+    fails = np.concatenate( [x['fails'] for x in resList] )    
+    
+    # calculations
+    p_values = np.mean(fails, axis=0)
+    abundances = np.mean(corr, axis=0)
+    variances = np.var(corr, axis=0)
+    return p_values, abundances, variances
+
+    

@@ -21,8 +21,7 @@ def randomString(string_length=10):
     
 
 class ReadMapper(object):
-    """Factory class for read mapping with 3rd party mappers."""
-    
+    """General factory class for setting read mapper object"""
     @staticmethod
     def getMapper(mapper=None):
         """factory designating subclass to use for mapping
@@ -30,7 +29,7 @@ class ReadMapper(object):
         Args:
         mapper -- designates mapper subclass
 
-        Mappers:
+        Supported mappers:
         bowtie2
         """
 
@@ -40,14 +39,13 @@ class ReadMapper(object):
         if mapper in mappers:
             return mappers[mapper]()
         else:
-            raise TypeError('mapper: "{0}" not implemented')
+            raise TypeError('mapper: "{0}" is not yet supported')
 
 
     def exeExists(self, exe):
-        """Checking to see if executable is in path
-
+        """checking to see if executable is in path
         Args:
-        exe -- executable
+        exe -- name of executable
         """
         if find_executable(exe):
             return 1
@@ -57,13 +55,14 @@ class ReadMapper(object):
             
 
 class MapperBowtie2(ReadMapper):
-    """Class for running bowtie2 mapping"""
+    """Class for mapping with bowtie2"""
     
     def __init__(self, executable=['bowtie2-build', 'bowtie2']):
-        """
+        """Checks that executables exists and sets exe attribute
         Args:
-        executable -- list of executables to check that they exist
+        executable -- list of executables that need to be used for bowtie2 mapping (indexer and mapper)
         """
+        # checking for bowtie2 in path
         [self.exeExists(x) for x in executable]
         # attr
         self.exe = executable
@@ -75,9 +74,11 @@ class MapperBowtie2(ReadMapper):
 
         Args:
         indexFile -- bowtie2 index file
-        readFile -- read file provided to bowtie2
+        readFile -- read file provided to bowtie2 (query)
         outFile -- sam output file. If None: using indexFile basename.
         tmpFile -- use a temporary file name (superscedes outFile).
+        subproc -- subprocess? (depreciated?)
+        samFile -- output SAM file name. Default to edited indexFile name.
         params -- bowtie2 parameters. Value = '' if boolean parameter
         """
         # outFile name
@@ -131,7 +132,7 @@ class MapperBowtie2(ReadMapper):
 
         Args:
         pairwiseList -- list of tuples (i,j,refIndex,readFile)
-            'i' and 'j' are comparison indices
+                        'i' and 'j' are comparison indices
         nprocs -- max number of parallel mapper calls
         kwargs -- passsed to mapper method
         """
@@ -143,6 +144,9 @@ class MapperBowtie2(ReadMapper):
 
         # calling mapper
         samFiles = parmap.starmap(new_mapper, trimmed, processes=nprocs)
+
+        # creating a numpy array for output
+        #simSamFiles = np.array([['' for i in range(n_refs)] for j in range(n_refs)], dtype=object)
         
         # appending samFiles to tuple
         pairwiseList2 = []
@@ -183,7 +187,6 @@ class MapperBowtie2(ReadMapper):
     
 
         
-
 
 class PairwiseMapper_OLD(object):
     """Class for pairwise read mapping"""
