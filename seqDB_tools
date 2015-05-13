@@ -17,6 +17,7 @@ Options:
 Commands:
   accession2genbankInfo
   accession-GI2fasta
+  BaseSpace_list
   ENA_sample_xmlParse
   entrez_get
   gasic_seqDB_batch
