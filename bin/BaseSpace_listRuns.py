@@ -64,14 +64,29 @@ def main(uargs):
 
     # user projects
     myProjects = myAPI.getProjectByUser()
-    print "The projects for this user are:" 
+    print "## The projects for this user are:" 
     print '\n'.join([str(x) for x in myProjects])
 
     # user runs
+    print "## The runs for this user are:"
+    print '\t'.join(['RunID','ExperimentName','UserOwnedBy',
+                     'DateCreated', 'Status'])
     runs = user.getRuns(myAPI)
-    print "The runs for this user are:"
-    print '\n'.join([str(x) for x in runs])
+    for run in runs:
+        data = [run.Id,
+                run.ExperimentName,
+                run.UserOwnedBy,
+                run.DateCreated,
+                run.Status]
 
+        print '\t'.join([str(x) for x in data])
+
+    # files associated with run
+#    for run in runs:
+#        print run.Id
+#        run_files = myAPI.getRunFilesById(run.Id)
+#        print run_files; sys.exit()
+    
 
 if __name__ == '__main__':
     uargs = docopt(__doc__, version='0.1')
