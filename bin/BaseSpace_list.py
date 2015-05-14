@@ -63,9 +63,33 @@ def main(uargs):
         user = myAPI.getUserById('current')
 
     # user projects
-    myProjects = myAPI.getProjectByUser()
+    projects = myAPI.getProjectByUser()
     print "## The projects for this user are:" 
-    print '\n'.join([str(x) for x in myProjects])
+    project_headers = ['ProjectID','Name','UserOwnedBy','DateCreated']
+    sample_headers = ['SampleID','NumReadsRaw','NumReadsPF','IsPairedEnd','Status']
+    print '\t'.join(project_headers + sample_headers)
+    for project in projects:
+        project_data = [project.Id,
+                         project.Name,
+                         project.UserOwnedBy,
+                         project.DateCreated]
+
+        samples = myAPI.getSamplesByProject(project.Id)
+        for sample in samples:
+            sample_data = [sample.Id,
+                           sample.NumReadsRaw,
+                           sample.NumReadsPF,
+                           sample.IsPairedEnd,
+                           sample.Status]
+            print '\t'.join([str(x) for x in project_data + sample_data])
+    
+            files = myAPI.getSampleFilesById(sample.Id)
+            for f in files:
+                #fo = myAPI.getFileById(f.Id)
+                myAPI.fileDownload(f.Id, '.')
+                
+#            print files; sys.exit()
+
 
     # user runs
     print "## The runs for this user are:"
@@ -78,7 +102,6 @@ def main(uargs):
                 run.UserOwnedBy,
                 run.DateCreated,
                 run.Status]
-
         print '\t'.join([str(x) for x in data])
 
     # files associated with run
