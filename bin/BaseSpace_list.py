@@ -83,13 +83,11 @@ def main(uargs):
                            sample.Status]
             print '\t'.join([str(x) for x in project_data + sample_data])
     
-            files = myAPI.getSampleFilesById(sample.Id)
-            for f in files:
+            #files = myAPI.getSampleFilesById(sample.Id)
+            #for f in files:
                 #fo = myAPI.getFileById(f.Id)
-                myAPI.fileDownload(f.Id, '.')
+            #    myAPI.fileDownload(f.Id, '.')
                 
-#            print files; sys.exit()
-
 
     # user runs
     print "## The runs for this user are:"
@@ -104,11 +102,6 @@ def main(uargs):
                 run.Status]
         print '\t'.join([str(x) for x in data])
 
-    # files associated with run
-#    for run in runs:
-#        print run.Id
-#        run_files = myAPI.getRunFilesById(run.Id)
-#        print run_files; sys.exit()
     
 
 if __name__ == '__main__':
