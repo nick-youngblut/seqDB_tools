@@ -1,19 +1,25 @@
 seqDB_tools: Tools for interaction with nucleotide sequence databases
 =====================================================================
 
-
 # INSTALL
 
-Add the bin folder to your $PATH.
-All dependencies (both perl and python scripts)
-should be obtainable from CPAN and pip/anaconda.
+### Clone the repo
+
+~~
+git clone https:github.com/nyoungb2/seq_tools.git
+cd seq_tools
+~~
+
+### set up paths; add bash completion
+
+~~
+echo 'source '`pwd`'/sourceMe' >> ~/.bashrc
+~~
 
 
 # SUPPORT AND DOCUMENTATION
 
-## For perl scripts:
-
-   perldoc misc_perl_NY
+Each subcommand has documentation available: `seqDB_tools [subcommand] -h`
 
 
 # LICENSE AND COPYRIGHT
