@@ -57,14 +57,14 @@ def parse_data(data):
     tbl1 = []
     tbl2 = []
     end = 0
-    level = ''
+    level = 'Level'
     for line in data:
         if end == 0:
             tbl1.append(line)
         elif end == 1:
             if line[0] == 'Lane':
-                line[0] = 'Level'
-            if len(line) == 1 and line[0] != 'Level':
+                line[0] = level
+            if len(line) == 1:
                 level = line[0]
                 continue
             else:

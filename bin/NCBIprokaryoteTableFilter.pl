@@ -130,22 +130,28 @@ This software is licensed under the terms of the GPLv3
 =cut
 
 #--- modules ---#
+use Pod::Usage;
 use Data::Dumper;
 use Getopt::Euclid;
 use Time::Local;
 use List::Util qw/max/;
+use List::MoreUtils qw/any/;
 use Bio::DB::Taxonomy;
 use Parallel::ForkManager;
 use File::Path qw/rmtree/;
 
 #--- I/O error ---#
 
-#print Dumper %ARGV; exit;
+if (any {$_ eq '-h'} values %ARGV){
+  print "Type '--help' for script info\n";
+  exit;
+}
 
 #--- MAIN ---#
 # just writing out genome fastas from accesion
 if($ARGV{'-write_fastas'}){
-  print STDERR "Writing out fastas of each genome (fastas from GenBank accession numbers)...\n";
+  print STDERR "Writing out fastas of each genome",
+    " (fastas from GenBank accession numbers)...\n";
   my $tbl_r = load_table_accession($ARGV{'<prokaryotes.txt>'});
 
   # output diretory
@@ -199,7 +205,8 @@ edit_header($tbl_r->{header});
 my $pm = Parallel::ForkManager->new($ARGV{-threads});
 $pm->run_on_finish(
 		   sub {
-		     my ($pid, $exit_code, $ident, $exit_signal, $core_dump, $tbl_r) = @_;
+		     my ($pid, $exit_code, $ident, 
+			 $exit_signal, $core_dump, $tbl_r) = @_;
 		     write_table($tbl_r);
 		     }
 		   );
@@ -241,7 +248,8 @@ sub write_fasta_from_accession{
   my $ret_val = 0;
   foreach my $acc (@$acc_r){
     my $seqio = $gb->get_Stream_by_id( [$acc] );
-    my $seq_out = Bio::SeqIO->new( -file => ">>$dir/$org.fasta", -format => 'fasta');
+    my $seq_out = Bio::SeqIO->new( -file => ">>$dir/$org.fasta", 
+				   -format => 'fasta');
     
     while(my $seq = $seqio->next_seq){
       if(defined $seq->seq()){
@@ -282,9 +290,11 @@ sub load_table_accession{
     
     # body
     my $chrom_col = exists $header{'Chromosomes/INSDC'} ? 
-      $header{'Chromosomes/INSDC'} : die "ERROR: 'Chromosomes/INSDC' field not found\n";
+      $header{'Chromosomes/INSDC'} : 
+	die "ERROR: 'Chromosomes/INSDC' field not found\n";
     my $org_col = exists $header{'#Organism/Name'} ? 
-      $header{'#Organism/Name'} : die "ERROR: '#Organism/Name' field not found\n";
+      $header{'#Organism/Name'} : 
+	die "ERROR: '#Organism/Name' field not found\n";
 
     $tbl{$l[$org_col]} = [split /\s*,\s*/, $l[$chrom_col]];
   }
