@@ -101,6 +101,10 @@ $pm->run_on_finish(
                      }
                    );
 
+# header
+my @levels = qw/superkingdom phylum class order family genus species/;
+print join("\t", 'taxid', @levels), "\n";
+
 while(<>){
   chomp;
   next if /^\s*$/;
@@ -114,7 +118,7 @@ while(<>){
     $tries++;
 
     # get fastas & write
-    my $tax_r = get_lineage($taxid);
+    my $tax_r = get_lineage($taxid, \@levels);
     
     # print if successful
     if ($tax_r){
@@ -143,9 +147,9 @@ exit;
 sub get_lineage{
 # if lineage needed #
   my $id = shift;
-  
-  my @levels = qw/superkingdom phylum class order family genus species/;
-  
+  my $levels = shift || die "Provide array of taxonomy levels";
+  my @levels = @$levels;
+    
   my %lineage;
   my $db = new Bio::DB::Taxonomy(-source => 'entrez');
   my $node= $db->get_Taxonomy_Node(-taxonid => $id);
