@@ -5,16 +5,16 @@ seqDB_tools: Tools for interaction with nucleotide sequence databases
 
 ### Clone the repo
 
-~~
+```sh
 git clone https:github.com/nyoungb2/seq_tools.git
 cd seq_tools
-~~
+```
 
 ### set up paths; add bash completion
 
-~~
+```sh
 echo 'source '`pwd`'/sourceMe' >> ~/.bashrc
-~~
+```
 
 
 # SUPPORT AND DOCUMENTATION
